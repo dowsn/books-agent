@@ -54,8 +54,16 @@ def merge_photo_and_web_data(photo_data: BookPhotoExtraction, web_data: Optional
         web_data: Data from web API
     
     Returns:
-        Complete Book object
+        Complete Book object with accurate source tracking
     """
+    has_photo_data = any([
+        photo_data.isbn,
+        photo_data.title,
+        photo_data.author,
+        photo_data.publisher,
+        photo_data.year
+    ])
+    
     if not web_data:
         return Book(
             isbn=photo_data.isbn,
@@ -75,6 +83,8 @@ def merge_photo_and_web_data(photo_data: BookPhotoExtraction, web_data: Optional
     published_date = web_data.get("publishedDate", "")
     web_year = published_date[:4] if len(published_date) >= 4 else None
     
+    source = "photo+web" if has_photo_data else "web"
+    
     return Book(
         isbn=photo_data.isbn or web_data.get("industryIdentifiers", [{}])[0].get("identifier"),
         title=photo_data.title or web_data.get("title"),
@@ -86,5 +96,5 @@ def merge_photo_and_web_data(photo_data: BookPhotoExtraction, web_data: Optional
         categories=categories,
         page_count=web_data.get("pageCount"),
         language=web_data.get("language"),
-        source="photo+web" if photo_data.isbn or photo_data.title else "web"
+        source=source
     )

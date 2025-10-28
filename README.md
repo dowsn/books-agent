@@ -4,10 +4,25 @@ A proof-of-concept agent using the mcp-agent framework with Google Gemini's visi
 
 ## Features
 
+### Two-Step Extraction Process
+
+**Step 1: Photo Analysis (Gemini Vision)**
 - Extract ISBN-10 and ISBN-13 from book cover images
 - Extract book title, author, publisher, and publication year
+- OCR recognition from visible text on the book cover
+- ⚠️ **No description from photos** - only metadata
+
+**Step 2: Web Enrichment (Google Books API)**
+- Fetches complete book information using ISBN
+- Adds description, categories, language, page count
+- Provides fallback search using title + author if no ISBN
+- Enriches photo data with web metadata
+
+### Technology
 - Uses Gemini 2.0 Flash with vision capabilities
+- Google Books API for web enrichment
 - Built on the mcp-agent framework
+- Source tracking: shows "photo", "web", or "photo+web"
 
 ## Setup
 
@@ -34,13 +49,20 @@ Or use the example script:
 python src/example_usage.py
 ```
 
-The agent will analyze the image and extract:
-- ISBN number
-- Title
-- Author
-- Publisher
-- Publication year
-- Brief description
+The agent will:
+1. **Analyze the image** and extract:
+   - ISBN number
+   - Title
+   - Author
+   - Publisher
+   - Publication year
+
+2. **Enrich with web data** to add:
+   - Description (from web, never from photo!)
+   - Categories/genres
+   - Language
+   - Page count
+   - Additional metadata
 
 ## Project Structure
 
