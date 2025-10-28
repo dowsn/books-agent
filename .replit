@@ -17,15 +17,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Book Agent"
+args = "Book Extractor"
 
 [[workflows.workflow]]
-name = "Book Agent"
+name = "Book Extractor"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python src/book_agent.py"
+args = "python src/book_extractor.py"
+
+[workflows.workflow.metadata]
+outputType = "console"
