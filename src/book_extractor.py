@@ -120,51 +120,61 @@ async def process_book_image(image_path: str) -> str:
         
         print(f"\n🌐 Step 2: Enriching with web data...")
         
-        context.config.mcp = MCPSettings(
-            servers={
-                "fetch": MCPServerSettings(
-                    command="uvx",
-                    args=["mcp-server-fetch"],
-                ),
-            }
-        )
-        
         book_agent = Agent(
             name="book_researcher",
-            instruction=f"""You are a book information researcher. You have access to the fetch tool to make HTTP requests.
+            instruction=f"""You are a book information researcher with access to the fetch tool.
 
-From the photo, we extracted:
+PHOTO DATA EXTRACTED:
 - ISBN: {photo_data.isbn or 'Not found'}
 - Title: {photo_data.title or 'Not found'}
 - Author: {photo_data.author or 'Not found'}
 - Publisher: {photo_data.publisher or 'Not found'}
 - Year: {photo_data.year or 'Not found'}
 
-Your task:
-1. First, try to fetch book data from Google Books API using the ISBN (if available)
-   URL: https://www.googleapis.com/books/v1/volumes?q=isbn:{photo_data.isbn}
-   
-2. If no ISBN or Google Books returns no results, try searching by title and author:
-   URL: https://www.googleapis.com/books/v1/volumes?q={photo_data.title}+{photo_data.author}
+TASK: Fetch complete book data from Google Books API.
 
-3. If Google Books still returns nothing, try a general web search for the book
+STEP 1: Use fetch tool to call Google Books API
+URL: https://www.googleapis.com/books/v1/volumes?q=isbn:{photo_data.isbn}
 
-Extract from the API response:
-- description (CRITICAL: must be from web, never from photo)
-- language
-- categories
-- pageCount
-- publisher (if not in photo)
-- publishedDate (if not in photo)
+STEP 2: Parse the JSON response
+The response has this structure:
+{{
+  "items": [
+    {{
+      "volumeInfo": {{
+        "title": "...",
+        "authors": ["..."],
+        "publisher": "...",
+        "publishedDate": "...",
+        "description": "...",  <-- THIS IS WHAT WE NEED!
+        "pageCount": 123,
+        "categories": ["..."],
+        "language": "..."
+      }}
+    }}
+  ]
+}}
 
-Return the enriched data as JSON with these fields:
-- description (string or null)
-- language (string or null)  
-- categories (string or null - comma-separated)
-- page_count (integer or null)
-- publisher (string or null)
-- year (string or null)
-- source (string - "web" or "google_books")""",
+STEP 3: Extract data from items[0].volumeInfo:
+- description: volumeInfo.description (CRITICAL - never use photo description!)
+- language: volumeInfo.language
+- categories: Join volumeInfo.categories array with commas
+- page_count: volumeInfo.pageCount
+- publisher: volumeInfo.publisher
+- year: Extract first 4 characters from volumeInfo.publishedDate
+
+STEP 4: If Google Books returns no results (totalItems = 0), try web search
+
+RETURN JSON:
+{{
+  "description": "text from Google Books",
+  "language": "en",
+  "categories": "Fiction, Mystery",
+  "page_count": 300,
+  "publisher": "Publisher Name",
+  "year": "2022",
+  "source": "google_books"
+}}""",
             server_names=["fetch"],
         )
         
@@ -185,8 +195,17 @@ Return JSON with description, language, categories, page_count, publisher, year,
             logger.info(f"Web enrichment result: {web_result}")
             
             try:
-                web_data = json.loads(web_result)
-            except json.JSONDecodeError:
+                result_text = web_result.strip()
+                if result_text.startswith("```json"):
+                    result_text = result_text[7:]
+                if result_text.startswith("```"):
+                    result_text = result_text[3:]
+                if result_text.endswith("```"):
+                    result_text = result_text[:-3]
+                result_text = result_text.strip()
+                web_data = json.loads(result_text)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON: {e}")
                 web_data = {}
             
             has_photo_data = any([

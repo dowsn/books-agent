@@ -1,78 +1,85 @@
-# Book ISBN Extractor Agent
+# Book ISBN Extractor
 
-A proof-of-concept agent using the mcp-agent framework with Google Gemini's vision capabilities to extract ISBN numbers and book metadata from book cover images.
+An intelligent agent using the mcp-agent framework with Google Gemini vision to extract ISBN and book metadata from cover images, then enrich with web data from Google Books API.
 
-## Features
+## How It Works
 
-### Two-Step Extraction Process
+The book extractor uses an intelligent agent-based workflow:
 
-**Step 1: Photo Analysis (Gemini Vision)**
-- Extract ISBN-10 and ISBN-13 from book cover images
-- Extract book title, author, publisher, and publication year
-- OCR recognition from visible text on the book cover
-- ⚠️ **No description from photos** - only metadata
+### 🔍 Step 1: Vision OCR (Gemini 2.0 Flash)
+- Extracts ISBN, title, author, publisher, year from book cover image
+- Uses Gemini vision API for accurate OCR
+- **No description from photos** - only visible metadata
 
-**Step 2: Web Enrichment (Google Books API)**
-- Fetches complete book information using ISBN
-- Adds description, categories, language, page count
-- Provides fallback search using title + author if no ISBN
-- Enriches photo data with web metadata
+### 🌐 Step 2: Web Enrichment (Intelligent Agent)
+- Agent connects to fetch MCP server  
+- Calls Google Books API with extracted ISBN
+- Retrieves complete book data: description, language, categories, page count
+- Falls back to title+author search if no ISBN
+- Falls back to general web search if Google Books fails
 
-### Technology
-- Uses Gemini 2.0 Flash with vision capabilities
-- Google Books API for web enrichment
-- Built on the mcp-agent framework
-- Source tracking: shows "photo", "web", or "photo+web"
+### 🎯 Key Features
+- **mcp-agent framework**: Autonomous agent with tool access
+- **Gemini vision**: Accurate ISBN and metadata extraction
+- **MCP fetch server**: HTTP requests to Google Books API
+- **Source tracking**: Shows "photo", "web", or "photo+web"
+- **Description guarantee**: Description ALWAYS from web, never from photo!
 
 ## Setup
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. Dependencies are already installed in this Replit project:
+   - mcp-agent[google] - Agent framework with Gemini support
+   - mcp-server-fetch - MCP server for HTTP requests
+   - google-genai - Gemini API client
 
-2. Set up your Gemini API key:
+2. Add your Gemini API key to Replit Secrets:
    - Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-   - Add it to your environment as `GEMINI_API_KEY`
+   - Add it as `GEMINI_API_KEY` in Replit Secrets
+
+3. Configuration file `mcp_agent.config.yaml` is already set up
 
 ## Usage
 
-Place a book cover image in the project directory named `test_book_cover.jpg` and run:
+1. Place your book cover image in `files/book.png`
 
+2. Run the extractor:
 ```bash
-python src/book_agent.py
+python src/book_extractor.py
 ```
 
-Or use the example script:
+The agent will automatically:
+1. Extract ISBN and metadata from the image using Gemini vision
+2. Connect to the fetch MCP server
+3. Call Google Books API with the ISBN
+4. Retrieve complete book information (description, language, categories)
+5. Display merged results with source attribution
 
-```bash
-python src/example_usage.py
+**Example Output:**
 ```
-
-The agent will:
-1. **Analyze the image** and extract:
-   - ISBN number
-   - Title
-   - Author
-   - Publisher
-   - Publication year
-
-2. **Enrich with web data** to add:
-   - Description (from web, never from photo!)
-   - Categories/genres
-   - Language
-   - Page count
-   - Additional metadata
+📚 Complete Book Information:
+============================================================
+Author: Kateřina Tučková
+ISBN: 978-80-275-1365-9
+Publisher: Host
+Year: 2022
+Language: cs
+Description: [Full description from Google Books API...]
+Source: photo+web
+============================================================
+```
 
 ## Project Structure
 
 ```
 ├── src/
-│   ├── models.py          - Pydantic data model for Book information
-│   ├── book_agent.py      - Main agent using mcp-agent + Gemini vision
-│   └── example_usage.py   - Usage examples and batch processing
-├── test_book_cover.jpg    - Sample book cover image for testing
-└── README.md              - This file
+│   ├── models.py           - Pydantic models (Book, BookPhotoExtraction)
+│   ├── book_extractor.py   - Main agent with vision + web enrichment
+│   ├── book_agent.py       - Legacy implementation (deprecated)
+│   └── web_enrichment.py   - Helper functions (deprecated)
+├── files/
+│   └── book.png            - Book cover image for extraction
+├── mcp_agent.config.yaml   - MCP server configuration
+└── README.md               - This file
 ```
 
 ## Technologies Used

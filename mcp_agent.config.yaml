@@ -1,0 +1,14 @@
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: info
+  progress_display: true
+
+mcp:
+  servers:
+    fetch:
+      command: "python"
+      args: ["-m", "mcp_server_fetch"]
+
+google:
+  default_model: "gemini-2.0-flash-exp"
