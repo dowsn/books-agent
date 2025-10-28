@@ -29,8 +29,19 @@ async def extract_book_info_from_image(
     
     Returns:
         Book object with extracted information
+    
+    Raises:
+        ValueError: If GEMINI_API_KEY is not set
+        FileNotFoundError: If image file does not exist
     """
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY environment variable is not set. "
+            "Please add your Gemini API key to Replit Secrets or set it as an environment variable."
+        )
+    
+    client = genai.Client(api_key=api_key)
     
     image_file = Path(image_path)
     if not image_file.exists():
