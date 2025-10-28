@@ -25,7 +25,13 @@ pip install -r requirements.txt
 Place a book cover image in the project directory named `test_book_cover.jpg` and run:
 
 ```bash
-python book_agent.py
+python src/book_agent.py
+```
+
+Or use the example script:
+
+```bash
+python src/example_usage.py
 ```
 
 The agent will analyze the image and extract:
@@ -38,9 +44,14 @@ The agent will analyze the image and extract:
 
 ## Project Structure
 
-- `models.py` - Pydantic data model for Book information
-- `book_agent.py` - Main agent implementation using mcp-agent and Gemini vision
-- `test_book_cover.jpg` - Sample book cover image for testing
+```
+├── src/
+│   ├── models.py          - Pydantic data model for Book information
+│   ├── book_agent.py      - Main agent using mcp-agent + Gemini vision
+│   └── example_usage.py   - Usage examples and batch processing
+├── test_book_cover.jpg    - Sample book cover image for testing
+└── README.md              - This file
+```
 
 ## Technologies Used
 

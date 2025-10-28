@@ -26,10 +26,16 @@ Demonstrate integration between:
 ## Project Architecture
 
 ### Files
-- `models.py` - Book data model (Pydantic)
-- `book_agent.py` - Main agent implementation
-- `README.md` - Project documentation
-- `test_book_cover.jpg` - Test image (replace with actual book cover)
+```
+├── src/
+│   ├── models.py          - Book data model (Pydantic)
+│   ├── book_agent.py      - Main agent with Gemini vision
+│   └── example_usage.py   - Usage examples
+├── test_book_cover.jpg    - Test image (replace with actual book cover)
+├── README.md              - Technical documentation
+├── INSTRUCTIONS.md        - User-friendly how-to guide
+└── replit.md              - This file (project memory)
+```
 
 ### Technology Stack
 - **mcp-agent**: Agent framework built on Model Context Protocol

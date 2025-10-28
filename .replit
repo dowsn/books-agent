@@ -23,9 +23,9 @@ args = "Book Agent"
 name = "Book Agent"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python book_agent.py"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python src/book_agent.py"
