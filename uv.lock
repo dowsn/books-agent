@@ -1180,6 +1180,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+google = [
+    { name = "google-genai" },
+]
 openai = [
     { name = "openai" },
 ]
@@ -2215,7 +2218,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "instructor" },
     { name = "mcp" },
-    { name = "mcp-agent", extra = ["openai"] },
+    { name = "mcp-agent", extra = ["google", "openai"] },
     { name = "pillow" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -2227,7 +2230,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=1.46.0" },
     { name = "instructor", specifier = ">=1.12.0" },
     { name = "mcp", specifier = ">=1.19.0" },
-    { name = "mcp-agent", extras = ["openai"], specifier = ">=0.2.3" },
+    { name = "mcp-agent", extras = ["google", "openai"], specifier = ">=0.2.3" },
     { name = "pillow", specifier = ">=12.0.0" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
