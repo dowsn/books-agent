@@ -122,7 +122,7 @@ async def process_book_image(image_path: str) -> str:
         
         book_agent = Agent(
             name="book_researcher",
-            instruction=f"""You are a book information researcher with access to the fetch tool.
+            instruction=f"""You are a book information researcher with access to the fetch tool for HTTP requests.
 
 PHOTO DATA EXTRACTED:
 - ISBN: {photo_data.isbn or 'Not found'}
@@ -131,13 +131,13 @@ PHOTO DATA EXTRACTED:
 - Publisher: {photo_data.publisher or 'Not found'}
 - Year: {photo_data.year or 'Not found'}
 
-TASK: Fetch complete book data from Google Books API.
+TASK: Fetch complete book data. Try primary source first, then fallbacks.
 
+=== PRIMARY: Google Books API ===
 STEP 1: Use fetch tool to call Google Books API
 URL: https://www.googleapis.com/books/v1/volumes?q=isbn:{photo_data.isbn}
 
-STEP 2: Parse the JSON response
-The response has this structure:
+STEP 2: Parse the JSON response structure:
 {{
   "items": [
     {{
@@ -146,7 +146,7 @@ The response has this structure:
         "authors": ["..."],
         "publisher": "...",
         "publishedDate": "...",
-        "description": "...",  <-- THIS IS WHAT WE NEED!
+        "description": "...",  <-- THIS IS CRITICAL!
         "pageCount": 123,
         "categories": ["..."],
         "language": "..."
@@ -155,26 +155,54 @@ The response has this structure:
   ]
 }}
 
-STEP 3: Extract data from items[0].volumeInfo:
-- description: volumeInfo.description (CRITICAL - never use photo description!)
-- language: volumeInfo.language
-- categories: Join volumeInfo.categories array with commas
-- page_count: volumeInfo.pageCount
-- publisher: volumeInfo.publisher
-- year: Extract first 4 characters from volumeInfo.publishedDate
+STEP 3: Check if totalItems > 0
+- If YES: Extract from items[0].volumeInfo and return (see JSON format below)
+- If NO: Go to FALLBACK
 
-STEP 4: If Google Books returns no results (totalItems = 0), try web search
+=== FALLBACK: Open Library API ===
+If Google Books fails (totalItems = 0 or error):
+
+STEP 4: Try Open Library API (no auth required)
+URL: https://openlibrary.org/api/books?bibkeys=ISBN:{photo_data.isbn}&format=json&jscmd=details
+
+Parse response structure:
+{{
+  "ISBN:XXX": {{
+    "details": {{
+      "description": "...",
+      "number_of_pages": 123,
+      "publishers": ["..."],
+      "publish_date": "...",
+      "subjects": ["..."]
+    }}
+  }}
+}}
+
+STEP 5: If Open Library also fails, try title+author search
+URL: https://openlibrary.org/search.json?title={photo_data.title}&author={photo_data.author}
+
+=== DATA EXTRACTION ===
+Extract these fields (prioritize Google Books, fallback to Open Library):
+- description: CRITICAL - must be from API, never from photo!
+- language: language code (e.g., "en", "cs")
+- categories: comma-separated string
+- page_count: integer
+- publisher: string (use photo data if API doesn't provide)
+- year: 4-digit year (use photo data if API doesn't provide)
+- source: "google_books", "open_library", or "web_search"
 
 RETURN JSON:
 {{
-  "description": "text from Google Books",
+  "description": "Complete description from API",
   "language": "en",
   "categories": "Fiction, Mystery",
   "page_count": 300,
   "publisher": "Publisher Name",
   "year": "2022",
   "source": "google_books"
-}}""",
+}}
+
+If all sources fail, return with null values and source="none".""",
             server_names=["fetch"],
         )
         
