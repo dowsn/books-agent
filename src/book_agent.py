@@ -50,11 +50,14 @@ async def extract_book_info_from_image(
     with open(image_path, "rb") as f:
         image_bytes = f.read()
     
-    mime_type = "image/jpeg"
     if image_path.lower().endswith(".png"):
         mime_type = "image/png"
     elif image_path.lower().endswith(".webp"):
         mime_type = "image/webp"
+    elif image_path.lower().endswith((".jpg", ".jpeg")):
+        mime_type = "image/jpeg"
+    else:
+        mime_type = "image/jpeg"
     
     prompt = """Analyze this book cover image and extract the following information:
     
@@ -101,11 +104,12 @@ If any information is not visible or unclear, use null for that field."""
 async def main():
     """Test the book info extraction"""
     async with app.run() as agent_app:
-        test_image = "test_book_cover.jpg"
+        test_image = "files/book.png"
         
         if not Path(test_image).exists():
             print(f"❌ Test image '{test_image}' not found.")
-            print(f"Please add a book cover image named '{test_image}' to the project directory.")
+            print(f"📤 Please upload your book cover image to the 'files' folder and name it 'book.png'")
+            print(f"   You can also use .jpg or .jpeg format.")
             return
         
         print(f"🔍 Extracting book information from '{test_image}'...")
