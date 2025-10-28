@@ -6,9 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=2.13.0.2",
     "google-genai>=1.46.0",
+    "httpx>=0.28.1",
     "instructor>=1.12.0",
     "mcp>=1.19.0",
     "mcp-agent[google,openai]>=0.2.3",
+    "mcp-server-fetch>=2025.1.17",
     "pillow>=12.0.0",
     "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",

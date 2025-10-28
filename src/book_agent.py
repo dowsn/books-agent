@@ -10,7 +10,8 @@ from mcp_agent.app import MCPApp
 from mcp_agent.agents.agent import Agent
 from mcp_agent.core.context import Context as AppContext
 
-from models import Book
+from models import Book, BookPhotoExtraction
+from web_enrichment import fetch_book_info_from_web, merge_photo_and_web_data
 
 
 app = MCPApp(name="book_isbn_extractor", description="Extract ISBN and book information from cover images")
@@ -59,13 +60,15 @@ async def extract_book_info_from_image(
     else:
         mime_type = "image/jpeg"
     
-    prompt = """Analyze this book cover image and extract the following information:
+    prompt = """Analyze this book cover image and extract ONLY the following information that is visible:
     
-1. ISBN number (ISBN-10 or ISBN-13) - Look for numbers prefixed with "ISBN" on the cover or back
+1. ISBN number (ISBN-10 or ISBN-13) - Look for numbers prefixed with "ISBN" 
 2. Book title
 3. Author name(s)
 4. Publisher name (if visible)
 5. Publication year (if visible)
+
+IMPORTANT: Return ONLY information visible in the image. DO NOT include description.
 
 Return the information in JSON format with these exact fields:
 - isbn (string or null)
@@ -73,9 +76,10 @@ Return the information in JSON format with these exact fields:
 - author (string or null)
 - publisher (string or null)
 - year (string or null)
-- description (string or null - brief description based on cover text if available)
 
 If any information is not visible or unclear, use null for that field."""
+    
+    print("  Step 1: Extracting information from photo...")
     
     response = client.models.generate_content(
         model="gemini-2.0-flash-exp",
@@ -88,17 +92,31 @@ If any information is not visible or unclear, use null for that field."""
         ],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
-            response_schema=Book,
+            response_schema=BookPhotoExtraction,
         ),
     )
     
     if response.text:
         import json
         data = json.loads(response.text)
-        book = Book(**data)
-        return book
+        photo_data = BookPhotoExtraction(**data)
     else:
-        return Book()
+        photo_data = BookPhotoExtraction()
+    
+    print(f"  ✓ Photo extraction complete")
+    if photo_data.isbn:
+        print(f"    Found ISBN: {photo_data.isbn}")
+    
+    print("  Step 2: Enriching with web data...")
+    web_data = await fetch_book_info_from_web(photo_data)
+    
+    if web_data:
+        print(f"  ✓ Web enrichment complete")
+    else:
+        print(f"  ⚠ No additional web data found")
+    
+    final_book = merge_photo_and_web_data(photo_data, web_data)
+    return final_book
 
 
 async def main():
