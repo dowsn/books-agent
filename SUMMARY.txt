@@ -1,0 +1,91 @@
+================================================================================
+✅ MCP SERVERS SETUP - COMPLETE SUCCESS!
+================================================================================
+
+🎯 PROBLEM SOLVED: npx Issue
+─────────────────────────────
+Original Error:
+  /nix/store/.../npx: line 6: XDG_CONFIG_HOME: unbound variable
+
+Solution Applied:
+  Added environment variables to mcp_agent.config.yaml:
+    XDG_CONFIG_HOME: /tmp/.config
+    HOME: /tmp
+
+================================================================================
+✅ MCP SERVERS CONFIGURED
+================================================================================
+
+1. Brave Search MCP
+   ├─ Package: @modelcontextprotocol/server-brave-search
+   ├─ Purpose: Web search functionality
+   ├─ API Key: BRAVE_API_KEY (already configured)
+   └─ Status: ✅ Working perfectly
+
+2. Open Library MCP
+   ├─ Package: mcp-open-library
+   ├─ Purpose: Book metadata from Open Library
+   ├─ API Key: None required (public API)
+   └─ Status: ✅ Working perfectly
+
+================================================================================
+✅ TESTS PASSED
+================================================================================
+
+Test 1: test_brave_isbn.py
+  ├─ Searched for ISBN: 978-0135957059
+  ├─ Used Brave MCP server
+  └─ Result: ✅ Retrieved structured book data
+
+Test 2: test_openlibrary_mcp.py
+  ├─ Searched for ISBN: 978-0135957059
+  ├─ Used Open Library MCP server
+  └─ Result: ✅ Retrieved complete metadata
+
+Test 3: test_both_mcp_servers.py
+  ├─ Loaded both servers simultaneously
+  └─ Result: ✅ Both servers running together
+
+================================================================================
+📁 FILES CREATED
+================================================================================
+
+Configuration:
+  mcp_agent.config.yaml - MCP servers configured
+
+Documentation:
+  MCP_SETUP_SUCCESS.md - Complete MCP setup guide
+  replit.md - Updated with MCP server details
+
+Test Files:
+  test_brave_isbn.py - Brave Search test
+  test_openlibrary_mcp.py - Open Library test
+  test_both_mcp_servers.py - Comprehensive test
+
+================================================================================
+🚀 HOW TO USE
+================================================================================
+
+Both MCP servers are now available to any agent! Example:
+
+  from mcp_agent.app import MCPApp
+  
+  app = MCPApp(name="my_app", description="...")
+  
+  async with app.run() as running_app:
+      # Your agents automatically have access to:
+      # - brave_web_search (from Brave MCP)
+      # - Open Library tools (from Open Library MCP)
+
+================================================================================
+✅ READY FOR PRODUCTION
+================================================================================
+
+✓ npx issue completely solved
+✓ Node.js installed (nodejs-20)
+✓ Both MCP servers tested and working
+✓ Environment variables properly configured
+✓ Documentation updated
+✓ Can now use MCP tools in book extractor app
+
+================================================================================

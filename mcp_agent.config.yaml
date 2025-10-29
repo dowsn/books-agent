@@ -5,7 +5,24 @@ logger:
   progress_display: true
 
 mcp:
-  servers: {}
+  servers:
+    brave-search:
+      command: npx
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-brave-search"
+      env:
+        BRAVE_API_KEY: ${BRAVE_API_KEY}
+        XDG_CONFIG_HOME: /tmp/.config
+        HOME: /tmp
+    open-library:
+      command: npx
+      args:
+        - "-y"
+        - "mcp-open-library"
+      env:
+        XDG_CONFIG_HOME: /tmp/.config
+        HOME: /tmp
 
 google:
   default_model: "gemini-2.0-flash-exp"

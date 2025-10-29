@@ -433,6 +433,11 @@ START NOW: Call search_google_books first, then continue as needed.""",
                     author=photo_data.get("author"),
                     publisher=photo_data.get("publisher"),
                     year=photo_data.get("year"),
+                    city=None,
+                    description=None,
+                    categories=None,
+                    page_count=None,
+                    language=None,
                     source="photo"
                 )
 

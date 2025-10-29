@@ -11,14 +11,45 @@ Demonstrate advanced agent capabilities:
 - **Type-safe data merging** - Proper conversion of API responses to Pydantic models
 
 ## Current State (October 29, 2025)
-✅ **Production-ready autonomous agent**
+✅ **Production-ready autonomous agent with MCP servers**
 - Agent autonomously calls 4 specialized tools in waterfall order
 - Successfully tested with real book images
 - Proper type conversion and Pydantic validation
 - Error handling for missing API keys and failed requests
 - Source attribution (photo/web/photo+web)
+- **NEW:** Brave Search and Open Library MCP servers configured and working
+- **SOLVED:** npx issue by setting XDG_CONFIG_HOME and HOME environment variables
 
 ## Recent Changes (October 29, 2025)
+
+### Latest: MCP Servers Integration (October 29, 2025 - Evening)
+
+**Problem Solved: npx Issue**
+- Error: `/nix/store/.../npx: line 6: XDG_CONFIG_HOME: unbound variable`
+- **Solution:** Added environment variables to MCP server configurations
+  ```yaml
+  env:
+    XDG_CONFIG_HOME: /tmp/.config
+    HOME: /tmp
+  ```
+
+**MCP Servers Added:**
+1. **Brave Search MCP** (`@modelcontextprotocol/server-brave-search`)
+   - ✅ Configured and tested
+   - Web search functionality
+   - Uses BRAVE_API_KEY environment variable
+   
+2. **Open Library MCP** (`mcp-open-library`)
+   - ✅ Configured and tested
+   - Book metadata from Open Library API
+   - No API key required
+   - Source: https://github.com/8enSmith/mcp-open-library
+
+**Test Files Created:**
+- `test_brave_isbn.py` - Tested Brave search with ISBN
+- `test_openlibrary_mcp.py` - Tested Open Library with ISBN
+- `test_both_mcp_servers.py` - Comprehensive test of both servers
+- `MCP_SETUP_SUCCESS.md` - Complete documentation of MCP setup
 
 ### Final Implementation: Autonomous Agent with Specialized Tools
 
@@ -51,7 +82,7 @@ Demonstrate advanced agent capabilities:
 │   └── book_extractor.py   - Autonomous agent with 4 specialized tools
 ├── files/
 │   └── book.png            - Book cover image for testing
-├── mcp_agent.config.yaml   - Agent configuration (empty MCP servers)
+├── mcp_agent.config.yaml   - Agent configuration (Brave & Open Library MCP servers)
 ├── README.md               - User documentation
 └── replit.md               - This file (project memory)
 ```
@@ -127,11 +158,13 @@ Merges all data → converts types → returns complete Book
 - **Instructions**: Easier to write waterfall logic with named tools
 - **Debugging**: Logs show which tool was called and why
 
-### Why No MCP Servers?
-- **Simplicity**: Custom @app.tool() functions are easier to debug
-- **Flexibility**: Can add custom error handling and retry logic
-- **Dependencies**: No need for Node.js/npm (Brave MCP server requires npx)
-- **Control**: Full control over API calls and response parsing
+### MCP Servers Now Available
+- **Updated**: Now using MCP servers alongside custom tools
+- **Brave Search MCP**: Web search via Model Context Protocol
+- **Open Library MCP**: Book metadata via Model Context Protocol
+- **Node.js installed**: Required for npx to run MCP servers
+- **Environment fix**: XDG_CONFIG_HOME and HOME variables set for npx
+- **Hybrid approach**: Custom tools + MCP servers for maximum flexibility
 
 ### Why Separate Photo and Web Models?
 - **BookPhotoExtraction**: Only visible metadata (enforces no description)
