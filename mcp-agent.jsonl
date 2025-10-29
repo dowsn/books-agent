@@ -41,3 +41,30 @@
 {"level":"INFO","timestamp":"2025-10-28T20:36:26.272101","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
 {"level":"INFO","timestamp":"2025-10-28T20:36:26.272239","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Requesting shutdown..."}
 {"level":"INFO","timestamp":"2025-10-28T20:36:26.474430","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T20:29:27.037279","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T20:29:27.116282","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T20:29:27.116651","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"d22a04ff-1a70-423d-abbf-ce8728e8a525"}}}
+{"level":"INFO","timestamp":"2025-10-29T20:29:29.250059","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Up and running with a persistent connection!"}
+{"level":"INFO","timestamp":"2025-10-29T20:29:30.490409","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent started with extract_from_photo and fetch tools"}
+{"level":"INFO","timestamp":"2025-10-29T20:29:30.490678","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:29:30.498768","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:29:30.499411","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Requesting shutdown..."}
+{"level":"INFO","timestamp":"2025-10-29T20:29:30.700462","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:13.924944","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:13.965189","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:13.965580","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"a7a81ba5-b2e3-4766-8e8a-a2393731eebd"}}}
+{"level":"INFO","timestamp":"2025-10-29T20:31:15.847761","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Up and running with a persistent connection!"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:16.711009","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:16.710755","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent started with fetch tool for web APIs"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:16.715068","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:16.715194","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Requesting shutdown..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:16.916058","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:53.339967","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:53.388944","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:53.389307","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"4b497643-b227-424f-a8bf-f2209f376e56"}}}
+{"level":"INFO","timestamp":"2025-10-29T20:31:55.210585","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Up and running with a persistent connection!"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:55.995550","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent started with fetch tool for web APIs"}
+{"level":"INFO","timestamp":"2025-10-29T20:31:55.999171","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:55.999265","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Requesting shutdown..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:55.995761","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T20:31:56.201404","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}

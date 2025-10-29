@@ -11,12 +11,13 @@ The book extractor uses an intelligent agent-based workflow:
 - Uses Gemini vision API for accurate OCR
 - **No description from photos** - only visible metadata
 
-### 🌐 Step 2: Web Enrichment (Intelligent Agent)
-- Agent connects to fetch MCP server  
-- Calls Google Books API with extracted ISBN
-- Retrieves complete book data: description, language, categories, page count
-- Falls back to title+author search if no ISBN
-- Falls back to general web search if Google Books fails
+### 🌐 Step 2: Web Enrichment (Autonomous Agent)
+The agent autonomously collects missing data using a waterfall strategy:
+1. **Google Books API** - Primary source for description, language, categories
+2. **Open Library API** - Fallback if Google Books fails or has missing data
+3. **Brave Search** - Last resort (optional, requires free API key)
+
+The agent intelligently tracks which fields it has and only calls APIs when needed!
 
 ### 🎯 Key Features
 - **mcp-agent framework**: Autonomous agent with tool access
@@ -36,7 +37,12 @@ The book extractor uses an intelligent agent-based workflow:
    - Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
    - Add it as `GEMINI_API_KEY` in Replit Secrets
 
-3. Configuration file `mcp_agent.config.yaml` is already set up
+3. (Optional) Add Brave Search for last-resort fallback:
+   - Get a free API key from [Brave Search API](https://brave.com/search/api/)
+   - Add it as `BRAVE_API_KEY` in Replit Secrets
+   - The agent will automatically use it if Google Books and Open Library fail
+
+4. Configuration file `mcp_agent.config.yaml` is already set up
 
 ## Usage
 
