@@ -144,6 +144,54 @@ async def search_google_books(isbn: str) -> dict:
 
 
 @app.tool()
+async def search_brave(query: str) -> dict:
+    """
+    Search the web using Brave Search API for book information.
+    Used as last resort when Google Books and Open Library don't have complete data.
+    
+    Args:
+        query: Search query (e.g., "book title author")
+    
+    Returns:
+        Dictionary with search results
+    """
+    api_key = os.environ.get("BRAVE_API_KEY")
+    if not api_key:
+        return {"error": "BRAVE_API_KEY not set"}
+    
+    url = "https://api.search.brave.com/res/v1/web/search"
+    headers = {
+        "X-Subscription-Token": api_key,
+        "Accept": "application/json"
+    }
+    params = {"q": query, "count": 5}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=headers, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Extract relevant snippets from search results
+            results = []
+            for result in data.get("web", {}).get("results", [])[:3]:
+                results.append({
+                    "title": result.get("title"),
+                    "description": result.get("description"),
+                    "url": result.get("url")
+                })
+            
+            return {
+                "query": query,
+                "results": results,
+                "source": "brave_search"
+            }
+            
+        except Exception as e:
+            return {"error": f"Brave Search API error: {str(e)}"}
+
+
+@app.tool()
 async def search_open_library(isbn: str) -> dict:
     """
     Search Open Library API for book information using ISBN.
@@ -233,7 +281,7 @@ async def collect_book_data(image_path: str) -> Book:
         if photo_data.get("author"):
             print(f"   ✓ Found Author: {photo_data['author']}")
         
-        # Check if Brave Search MCP is available
+        # Check if Brave Search is available
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
         brave_status = "✓ Brave Search available" if has_brave else "○ Brave Search not configured (optional)"
         print(f"\n🔧 Available tools:")
@@ -243,12 +291,7 @@ async def collect_book_data(image_path: str) -> Book:
         
         print(f"\n🌐 Step 2: Enriching with web data using autonomous agent...")
         
-        # Determine which MCP servers to use
-        server_names = []
-        if has_brave:
-            server_names.append("brave-search")
-        
-        # Create autonomous agent with all tools
+        # Create autonomous agent with all custom tools (no MCP servers needed)
         book_agent = Agent(
             name="book_collector",
             instruction=f"""You are an autonomous book data collector. Your goal is to build a COMPLETE Book object by collecting data from multiple sources.
@@ -259,7 +302,7 @@ PHOTO DATA (already extracted):
 YOUR TOOLS:
 1. search_google_books(isbn) - PRIMARY source, best for description/metadata
 2. search_open_library(isbn) - FALLBACK source if Google Books missing data
-3. brave_search (MCP) - LAST RESORT if both APIs fail (only if available)
+3. search_brave(query) - LAST RESORT if both APIs fail (only if BRAVE_API_KEY available)
 
 REQUIRED BOOK FIELDS (your goal is to fill ALL of these):
 - isbn: {photo_data.get('isbn', 'MISSING')}
@@ -284,9 +327,9 @@ STEP 2: Check what's still MISSING
 - If other fields null → call search_open_library for those too
 
 STEP 3: If STILL missing critical data (especially description)
-- Only if Brave Search is available
-- Search for: "{photo_data.get('title', '')} {photo_data.get('author', '')} book"
-- Extract missing information from search results
+- Only if Brave Search is available (check if search_brave tool works)
+- Call: search_brave("{photo_data.get('title', '')} {photo_data.get('author', '')} book")
+- Extract description or other missing info from search results
 
 DATA MERGING RULES:
 1. Keep photo data for: isbn, title, author (these are most reliable from image)
@@ -298,24 +341,28 @@ DATA MERGING RULES:
    - "web" if only web data
    - "photo+web" if merged (most common)
 
-OUTPUT: Return JSON with ALL fields filled:
+OUTPUT: Return JSON with ALL fields filled with CORRECT TYPES:
 {{
-  "isbn": "978-...",
-  "title": "Book Title",
-  "author": "Author Name",
-  "publisher": "Publisher",
-  "year": "2023",
-  "description": "Complete description from web API (NEVER from photo)",
-  "language": "en",
-  "categories": "Fiction, Mystery",
-  "page_count": 300,
-  "source": "photo+web"
+  "isbn": "978-..." (STRING),
+  "title": "Book Title" (STRING),
+  "author": "Author Name" (STRING),
+  "publisher": "Publisher" (STRING),
+  "year": "2023" (STRING not integer - must convert!),
+  "description": "Complete description from web API" (STRING, NEVER from photo),
+  "language": "en" (STRING),
+  "categories": "Fiction, Mystery" (STRING - join array with commas!),
+  "page_count": 300 (INTEGER),
+  "source": "photo+web" (STRING)
 }}
+
+CRITICAL TYPE CONVERSIONS:
+- year: Convert integer 2023 to string "2023"
+- categories: Join array ["Fiction", "Mystery"] into string "Fiction, Mystery"
+- page_count: Keep as integer (not string)
 
 If a field is truly unavailable after trying all sources, use null (not "Not available").
 
 START NOW: Call search_google_books first, then continue as needed.""",
-            server_names=server_names,
         )
         
         async with book_agent:

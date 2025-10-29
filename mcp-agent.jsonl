@@ -91,3 +91,34 @@
 {"level":"INFO","timestamp":"2025-10-29T20:34:22.957755","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
 {"level":"INFO","timestamp":"2025-10-29T20:34:22.958108","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"fetch: Requesting shutdown..."}
 {"level":"INFO","timestamp":"2025-10-29T20:34:23.159950","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.262305","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.357190","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.357714","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"5c2226ea-91ee-4ca2-8381-02b666104aeb"}}}
+{"level":"INFO","timestamp":"2025-10-29T21:22:16.633439","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Up and running with a persistent connection!"}
+{"level":"ERROR","timestamp":"2025-10-29T21:22:16.644779","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Lifecycle task encountered an error: [Errno 2] No such file or directory: 'npx'","data":{"exc_info":true,"data":{"progress_action":"Error","server_name":"brave-search"}}}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.260749","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.357715","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:14.357984","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"70371326-fc32-4301-80ec-2133e8098358"}}}
+{"level":"INFO","timestamp":"2025-10-29T21:22:16.803182","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Up and running with a persistent connection!"}
+{"level":"ERROR","timestamp":"2025-10-29T21:22:16.805777","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Lifecycle task encountered an error: [Errno 2] No such file or directory: 'npx'","data":{"exc_info":true,"data":{"progress_action":"Error","server_name":"brave-search"}}}
+{"level":"ERROR","timestamp":"2025-10-29T21:22:16.649443","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Error loading server data: MCP Server: 'brave-search': Failed to initialize with error: '[Errno 2] No such file or directory: 'npx''. Check mcp_agent.config.yaml. Attempting to continue"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.462121","namespace":"mcp_agent.book_extractor","message":"book_collector: Data collection complete"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:16.649711","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent initialized with all tools"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.462477","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.479975","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Requesting shutdown..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.478323","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"ERROR","timestamp":"2025-10-29T21:22:16.813665","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Error loading server data: MCP Server: 'brave-search': Failed to initialize with error: '[Errno 2] No such file or directory: 'npx''. Check mcp_agent.config.yaml. Attempting to continue"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:16.813825","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent initialized with all tools"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.577803","namespace":"mcp_agent.book_extractor","message":"book_collector: Data collection complete"}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.591208","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.578076","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.591768","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"brave-search: Requesting shutdown..."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.680377","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T21:22:20.792535","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"All persistent server connections signaled to disconnect."}
+{"level":"INFO","timestamp":"2025-10-29T21:23:35.233281","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T21:23:35.271948","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T21:23:35.272279","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"5204fe84-994d-443f-aadc-3b68573fe1f6"}}}
+{"level":"INFO","timestamp":"2025-10-29T21:23:37.315125","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent initialized with all tools"}
+{"level":"INFO","timestamp":"2025-10-29T21:23:40.341494","namespace":"mcp_agent.book_extractor","message":"book_collector: Data collection complete"}
+{"level":"INFO","timestamp":"2025-10-29T21:23:40.355970","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:23:40.364808","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}

@@ -5,12 +5,7 @@ logger:
   progress_display: true
 
 mcp:
-  servers:
-    brave-search:
-      command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-brave-search"]
-      env:
-        BRAVE_API_KEY: "${BRAVE_API_KEY}"
+  servers: {}
 
 google:
   default_model: "gemini-2.0-flash-exp"
