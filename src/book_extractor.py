@@ -164,9 +164,9 @@ STEP 1: You already have photo data (see above)
 The photo provided: isbn, title, author, publisher (maybe), year (maybe)
 Note: Photo data does NOT include description - that's intentional!
 
-STEP 2: Google Books API (if any fields still missing)
-Use fetch tool to call:
-URL: https://www.googleapis.com/books/v1/volumes?q=isbn:{{isbn}}
+STEP 2: Call Google Books API NOW
+Use fetch tool immediately with this URL:
+https://www.googleapis.com/books/v1/volumes?q=isbn:{photo_data.get('isbn', '')}
 
 Parse JSON response structure:
 {{
@@ -252,7 +252,13 @@ Return JSON with ALL fields filled:
 If a field is truly unavailable from all sources, use null.
 NEVER use placeholder text like "Not available" - use null instead.
 
-BEGIN COLLECTION NOW.""",
+BEGIN COLLECTION NOW.
+
+DO NOT explain what you will do. Just DO IT:
+1. Call fetch tool with Google Books URL
+2. Parse the response
+3. Merge with photo data
+4. Return ONLY the final JSON (no explanations, no text before or after)""",
             server_names=["fetch"],
         )
         
@@ -266,7 +272,7 @@ BEGIN COLLECTION NOW.""",
             
             # Let agent autonomously collect data
             response_text = await llm.generate_str(
-                message="Collect complete book data using the waterfall strategy described in your instructions."
+                message="Use the fetch tool to call Google Books API and retrieve complete book data. Return only the final JSON result."
             )
             
             logger.info(f"book_collector: Agent completed collection")
