@@ -3,6 +3,7 @@ import os
 import json
 from pathlib import Path
 from typing import Optional
+import httpx
 
 from google import genai
 from google.genai import types
@@ -20,7 +21,7 @@ app = MCPApp(
 
 
 @app.tool()
-async def extract_from_photo(image_path: str) -> str:
+async def extract_from_photo(image_path: str) -> dict:
     """
     Extract visible metadata from a book cover image using Gemini vision.
     Returns ONLY information visible on the cover (ISBN, title, author, publisher, year).
@@ -30,7 +31,7 @@ async def extract_from_photo(image_path: str) -> str:
         image_path: Path to the book cover image
     
     Returns:
-        JSON string with extracted fields: isbn, title, author, publisher, year
+        Dictionary with extracted fields: isbn, title, author, publisher, year
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -84,33 +85,135 @@ Return JSON with these exact fields (use null if not visible):
     )
     
     if response.text:
-        return response.text
+        return json.loads(response.text)
     else:
-        return json.dumps({
+        return {
             "isbn": None,
             "title": None,
             "author": None,
             "publisher": None,
             "year": None
-        })
+        }
 
 
 @app.tool()
-async def collect_book_data(image_path: str) -> str:
+async def search_google_books(isbn: str) -> dict:
     """
-    Autonomous agent that collects complete book information using a waterfall strategy.
+    Search Google Books API for complete book information using ISBN.
+    Returns description, language, categories, page_count, and other metadata.
     
-    The agent will:
-    1. Extract visible data from photo using extract_from_photo tool
-    2. Try Google Books API for missing fields
-    3. Try Open Library API if still missing data  
-    4. Try Brave Search as last resort (if API key available)
+    Args:
+        isbn: The ISBN number to search for
+    
+    Returns:
+        Dictionary with book data from Google Books API, or empty dict if not found
+    """
+    if not isbn:
+        return {"error": "No ISBN provided"}
+    
+    url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("totalItems", 0) == 0:
+                return {"error": "No results found in Google Books"}
+            
+            volume_info = data["items"][0].get("volumeInfo", {})
+            
+            # Extract and structure the data
+            result = {
+                "title": volume_info.get("title"),
+                "authors": volume_info.get("authors", []),
+                "publisher": volume_info.get("publisher"),
+                "published_date": volume_info.get("publishedDate"),
+                "description": volume_info.get("description"),
+                "language": volume_info.get("language"),
+                "categories": volume_info.get("categories", []),
+                "page_count": volume_info.get("pageCount"),
+                "source": "google_books"
+            }
+            
+            return result
+            
+        except Exception as e:
+            return {"error": f"Google Books API error: {str(e)}"}
+
+
+@app.tool()
+async def search_open_library(isbn: str) -> dict:
+    """
+    Search Open Library API for book information using ISBN.
+    Used as fallback when Google Books doesn't have complete data.
+    
+    Args:
+        isbn: The ISBN number to search for
+    
+    Returns:
+        Dictionary with book data from Open Library, or empty dict if not found
+    """
+    if not isbn:
+        return {"error": "No ISBN provided"}
+    
+    url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details"
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            
+            key = f"ISBN:{isbn}"
+            if key not in data:
+                return {"error": "No results found in Open Library"}
+            
+            details = data[key].get("details", {})
+            
+            # Extract and structure the data
+            description = details.get("description")
+            if isinstance(description, dict):
+                description = description.get("value")
+            
+            authors = details.get("authors", [])
+            author_names = [a.get("name") for a in authors if isinstance(a, dict)]
+            
+            result = {
+                "title": details.get("title"),
+                "authors": author_names,
+                "publisher": details.get("publishers", [None])[0] if details.get("publishers") else None,
+                "published_date": details.get("publish_date"),
+                "description": description,
+                "language": None,  # Open Library doesn't always have language
+                "categories": details.get("subjects", []),
+                "page_count": details.get("number_of_pages"),
+                "source": "open_library"
+            }
+            
+            return result
+            
+        except Exception as e:
+            return {"error": f"Open Library API error: {str(e)}"}
+
+
+async def collect_book_data(image_path: str) -> Book:
+    """
+    Autonomous agent that collects complete book information.
+    
+    The agent:
+    1. Extracts visible data from photo
+    2. Calls search_google_books for web enrichment
+    3. Falls back to search_open_library if needed
+    4. Falls back to Brave Search MCP if available and needed
+    5. Merges all data and returns complete Book object
     
     Args:
         image_path: Path to book cover image
     
     Returns:
-        Complete book information as JSON with source attribution
+        Complete Book object with all available data
     """
     async with app.run() as agent_app:
         logger = agent_app.logger
@@ -118,10 +221,9 @@ async def collect_book_data(image_path: str) -> str:
         print(f"🤖 Starting autonomous book data collection...")
         print(f"📖 Image: {image_path}\n")
         
-        # First, extract photo data that agent will use
-        print(f"📸 Extracting visible metadata from image...")
-        photo_json = await extract_from_photo(image_path)
-        photo_data = json.loads(photo_json)
+        # Step 1: Extract photo data
+        print(f"📸 Step 1: Extracting visible metadata from image...")
+        photo_data = await extract_from_photo(image_path)
         
         print(f"   ✓ Photo extraction complete")
         if photo_data.get("isbn"):
@@ -131,156 +233,113 @@ async def collect_book_data(image_path: str) -> str:
         if photo_data.get("author"):
             print(f"   ✓ Found Author: {photo_data['author']}")
         
-        print(f"\n🌐 Enriching with web data using autonomous agent...")
-        
-        # Check if Brave Search is available
+        # Check if Brave Search MCP is available
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
-        brave_note = "Brave Search API key detected - use as last resort." if has_brave else "No Brave API key - skip Brave Search."
+        brave_status = "✓ Brave Search available" if has_brave else "○ Brave Search not configured (optional)"
+        print(f"\n🔧 Available tools:")
+        print(f"   ✓ Google Books API")
+        print(f"   ✓ Open Library API")
+        print(f"   {brave_status}")
         
-        # Create fully autonomous agent with web tools
+        print(f"\n🌐 Step 2: Enriching with web data using autonomous agent...")
+        
+        # Determine which MCP servers to use
+        server_names = []
+        if has_brave:
+            server_names.append("brave-search")
+        
+        # Create autonomous agent with all tools
         book_agent = Agent(
             name="book_collector",
-            instruction=f"""You are an autonomous book information collector. Your goal is to enrich the photo data with complete book information using web APIs.
+            instruction=f"""You are an autonomous book data collector. Your goal is to build a COMPLETE Book object by collecting data from multiple sources.
 
-PHOTO DATA ALREADY EXTRACTED:
+PHOTO DATA (already extracted):
 {json.dumps(photo_data, indent=2)}
 
-NOTE: {brave_note}
+YOUR TOOLS:
+1. search_google_books(isbn) - PRIMARY source, best for description/metadata
+2. search_open_library(isbn) - FALLBACK source if Google Books missing data
+3. brave_search (MCP) - LAST RESORT if both APIs fail (only if available)
 
-REQUIRED FIELDS FOR FINAL OUTPUT:
-- isbn (string) - from photo
-- title (string) - from photo
-- author (string) - from photo
-- publisher (string) - from photo or web
-- year (string) - from photo or web
-- description (string) - MUST be from web, NEVER from photo!
-- language (string) - from web
-- categories (string) - from web
-- page_count (integer) - from web
+REQUIRED BOOK FIELDS (your goal is to fill ALL of these):
+- isbn: {photo_data.get('isbn', 'MISSING')}
+- title: {photo_data.get('title', 'MISSING')}  
+- author: {photo_data.get('author', 'MISSING')}
+- publisher: {photo_data.get('publisher') or 'MISSING - get from web'}
+- year: {photo_data.get('year') or 'MISSING - get from web'}
+- description: MISSING - MUST get from web, NEVER from photo!
+- language: MISSING - get from web
+- categories: MISSING - get from web  
+- page_count: MISSING - get from web
 
-=== WATERFALL STRATEGY ===
+WATERFALL STRATEGY:
 
-STEP 1: You already have photo data (see above)
-The photo provided: isbn, title, author, publisher (maybe), year (maybe)
-Note: Photo data does NOT include description - that's intentional!
+STEP 1: Call search_google_books('{photo_data.get('isbn', '')}')
+- Parse the response
+- Fill in: description, language, categories, page_count
+- Also use: publisher, year if missing from photo
 
-STEP 2: Call Google Books API NOW
-Use fetch tool immediately with this URL:
-https://www.googleapis.com/books/v1/volumes?q=isbn:{photo_data.get('isbn', '')}
+STEP 2: Check what's still MISSING
+- If description is null → call search_open_library('{photo_data.get('isbn', '')}')
+- If other fields null → call search_open_library for those too
 
-Parse JSON response structure:
-{{
-  "totalItems": 0 or 1+,
-  "items": [
-    {{
-      "volumeInfo": {{
-        "title": "...",
-        "authors": ["..."],
-        "publisher": "...",
-        "publishedDate": "YYYY-MM-DD",
-        "description": "...",  <-- CRITICAL for description!
-        "pageCount": 123,
-        "categories": ["Fiction", "Mystery"],
-        "language": "en"
-      }}
-    }}
-  ]
-}}
+STEP 3: If STILL missing critical data (especially description)
+- Only if Brave Search is available
+- Search for: "{photo_data.get('title', '')} {photo_data.get('author', '')} book"
+- Extract missing information from search results
 
-Extract from items[0].volumeInfo:
-- description: volumeInfo.description (required!)
-- language: volumeInfo.language
-- categories: join volumeInfo.categories with ", "
-- page_count: volumeInfo.pageCount
-- Also fill any missing: publisher, year (from publishedDate)
+DATA MERGING RULES:
+1. Keep photo data for: isbn, title, author (these are most reliable from image)
+2. Prefer Google Books for: description, language, categories, page_count
+3. Use Open Library to fill gaps
+4. Prefer web sources over photo for: publisher, year (more accurate)
+5. Source field:
+   - "photo" if only photo data
+   - "web" if only web data
+   - "photo+web" if merged (most common)
 
-STEP 3: Open Library API (if Google Books fails or fields still missing)
-Try these Open Library endpoints:
-
-A) By ISBN:
-URL: https://openlibrary.org/api/books?bibkeys=ISBN:{{isbn}}&format=json&jscmd=details
-
-Response structure:
-{{
-  "ISBN:XXX": {{
-    "details": {{
-      "title": "...",
-      "authors": [{{"name": "..."}}],
-      "publishers": ["..."],
-      "publish_date": "...",
-      "description": "..." or {{"value": "..."}},
-      "number_of_pages": 123,
-      "subjects": ["Fiction", "Mystery"]
-    }}
-  }}
-}}
-
-B) By title+author search (if ISBN lookup fails):
-URL: https://openlibrary.org/search.json?title={{title}}&author={{author}}
-
-STEP 4: Brave Search (LAST RESORT - only if BRAVE_API_KEY available and description still missing)
-If Brave API key is available and description is still null, search for book info:
-This is a last resort - only use if both Google Books and Open Library failed to provide description.
-
-=== DATA MERGING RULES ===
-
-1. Keep photo data for: isbn, title, author, publisher, year
-2. Web data fills missing fields and adds: description, language, categories, page_count
-3. Description MUST come from web (Google Books or Open Library)
-4. Prefer Google Books over Open Library for description quality
-5. Source attribution:
-   - "photo" if all data from photo only
-   - "web" if all data from web only  
-   - "photo+web" if merged from both
-
-=== OUTPUT FORMAT ===
-
-Return JSON with ALL fields filled:
+OUTPUT: Return JSON with ALL fields filled:
 {{
   "isbn": "978-...",
   "title": "Book Title",
   "author": "Author Name",
   "publisher": "Publisher",
   "year": "2023",
-  "description": "Complete description from web API",
+  "description": "Complete description from web API (NEVER from photo)",
   "language": "en",
   "categories": "Fiction, Mystery",
   "page_count": 300,
   "source": "photo+web"
 }}
 
-If a field is truly unavailable from all sources, use null.
-NEVER use placeholder text like "Not available" - use null instead.
+If a field is truly unavailable after trying all sources, use null (not "Not available").
 
-BEGIN COLLECTION NOW.
-
-DO NOT explain what you will do. Just DO IT:
-1. Call fetch tool with Google Books URL
-2. Parse the response
-3. Merge with photo data
-4. Return ONLY the final JSON (no explanations, no text before or after)""",
-            server_names=["fetch"],
+START NOW: Call search_google_books first, then continue as needed.""",
+            server_names=server_names,
         )
         
         async with book_agent:
-            logger.info("book_collector: Agent started with fetch tool for web APIs")
+            logger.info("book_collector: Agent initialized with all tools")
             
-            # Attach LLM to agent  
+            # Attach LLM to agent
             llm = await book_agent.attach_llm(
                 lambda agent: GoogleAugmentedLLM(model="gemini-2.0-flash-exp", agent=agent)
             )
             
-            # Let agent autonomously collect data
+            # Let agent autonomously collect and merge data
             response_text = await llm.generate_str(
-                message="Use the fetch tool to call Google Books API and retrieve complete book data. Return only the final JSON result."
+                message="Collect complete book data following the waterfall strategy. Return only the final merged JSON."
             )
             
-            logger.info(f"book_collector: Agent completed collection")
+            logger.info("book_collector: Data collection complete")
+            
+            # Parse response
+            response_text = response_text.strip()
             
             # Strip markdown code fences if present
             if response_text.startswith("```json"):
                 response_text = response_text[7:]
-            if response_text.startswith("```"):
+            elif response_text.startswith("```"):
                 response_text = response_text[3:]
             if response_text.endswith("```"):
                 response_text = response_text[:-3]
@@ -315,12 +374,20 @@ DO NOT explain what you will do. Just DO IT:
                 print(f"Source: {book.source}")
                 print("=" * 60)
                 
-                return response_text
+                return book
                 
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse agent response as JSON: {e}")
+                logger.error(f"Failed to parse agent response: {e}")
                 logger.error(f"Response was: {response_text}")
-                return json.dumps({"error": "Failed to parse agent response"})
+                # Return book with just photo data
+                return Book(
+                    isbn=photo_data.get("isbn"),
+                    title=photo_data.get("title"),
+                    author=photo_data.get("author"),
+                    publisher=photo_data.get("publisher"),
+                    year=photo_data.get("year"),
+                    source="photo"
+                )
 
 
 async def main():
@@ -333,7 +400,7 @@ async def main():
         return
     
     print(f"🔍 Processing book cover: {image_path}")
-    result = await collect_book_data(image_path)
+    book = await collect_book_data(image_path)
     print(f"\n✅ Processing complete!")
 
 
