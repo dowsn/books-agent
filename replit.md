@@ -1,129 +1,207 @@
-# Book ISBN Extractor Agent
+# Book ISBN Extractor - Autonomous Agent
 
 ## Project Overview
-An intelligent AI agent using the mcp-agent framework with Google Gemini 2.0 Flash vision that extracts ISBN numbers and book metadata from book cover images, then enriches the data with complete book information from web APIs.
+A production-ready autonomous AI agent using mcp-agent framework with Google Gemini vision that extracts ISBN and book metadata from cover images, then intelligently enriches the data using a waterfall strategy across multiple web APIs.
 
 ## Purpose
-Demonstrate integration between:
-- mcp-agent framework (Model Context Protocol for tool access)
-- Google Gemini multimodal AI (vision OCR for image extraction)
-- MCP fetch server (HTTP requests to external APIs)
-- Structured data extraction and web enrichment
+Demonstrate advanced agent capabilities:
+- **Autonomous tool orchestration** - Agent decides which tools to call based on Book state
+- **Waterfall fallback strategy** - Google Books → Open Library → Brave Search
+- **State-aware decision making** - Agent tracks which Book fields are filled vs missing
+- **Type-safe data merging** - Proper conversion of API responses to Pydantic models
 
-## Current State
-✅ **Production-ready implementation complete**
-- Two-step workflow: Photo extraction → Web enrichment
-- Gemini vision extracts ISBN, title, author, publisher, year (NO description)
-- Agent autonomously calls Google Books API via fetch MCP server
-- Fallback to Open Library API when Google Books fails
-- Source tracking (photo/web/photo+web) for data attribution
+## Current State (October 29, 2025)
+✅ **Production-ready autonomous agent**
+- Agent autonomously calls 4 specialized tools in waterfall order
 - Successfully tested with real book images
+- Proper type conversion and Pydantic validation
+- Error handling for missing API keys and failed requests
+- Source attribution (photo/web/photo+web)
 
-## Recent Changes (October 28, 2025)
+## Recent Changes (October 29, 2025)
 
-### Phase 1: Initial Setup
-- Installed mcp-agent framework with Google Gemini support
-- Created Book and BookPhotoExtraction Pydantic models
-- Set up Gemini API key via Replit secrets
+### Final Implementation: Autonomous Agent with Specialized Tools
 
-### Phase 2: Agent Architecture Rebuild
-- Restructured to follow mcp-agent patterns from official examples
-- Created `mcp_agent.config.yaml` to configure fetch MCP server
-- Implemented agent-driven workflow with autonomous tool use
-- Replaced manual API calls with intelligent agent instructions
+**Phase 1: Tool Specialization**
+- Created `extract_from_photo` tool using Gemini vision (NO description field)
+- Created `search_google_books` tool calling Google Books API
+- Created `search_open_library` tool calling Open Library API
+- Created `search_brave` tool calling Brave Search API (optional)
 
-### Phase 3: Web Enrichment & Fallbacks
-- Added Google Books API as primary data source
-- Implemented Open Library API as fallback (no API key required)
-- Added title+author search fallback for missing ISBNs
-- Verified description NEVER comes from photo, only from web APIs
+**Phase 2: Autonomous Agent Architecture**
+- Removed generic fetch MCP server
+- Agent has 4 specific tools with clear purposes
+- Waterfall instructions with Book state tracking
+- Type conversion instructions (year as string, categories joined)
 
-### Phase 4: Testing & Validation
-- Successfully extracted ISBN 978-80-275-1365-9 from Czech book
-- Retrieved Czech description from Google Books API
-- Verified source tracking shows "photo+web"
+**Phase 3: Testing & Validation**
+- Successfully tested with ISBN 978-80-275-1365-9 (Czech book)
+- Agent autonomously called search_google_books
+- Retrieved complete data with Czech description
+- Proper type conversions passed Pydantic validation
+- Source correctly labeled "photo+web"
 - Passed architect review with PASS status
 
 ## Project Architecture
 
-### Files
+### File Structure
 ```
 ├── src/
-│   ├── models.py           - Book data models (Pydantic)
-│   └── book_extractor.py   - Main agent with vision + web enrichment
+│   ├── models.py           - Pydantic models (Book, BookPhotoExtraction)
+│   └── book_extractor.py   - Autonomous agent with 4 specialized tools
 ├── files/
-│   └── book.png            - Book cover image for extraction
-├── mcp_agent.config.yaml   - MCP server configuration (fetch)
+│   └── book.png            - Book cover image for testing
+├── mcp_agent.config.yaml   - Agent configuration (empty MCP servers)
 ├── README.md               - User documentation
 └── replit.md               - This file (project memory)
 ```
 
 ### Technology Stack
-- **mcp-agent**: Agent framework built on Model Context Protocol
-- **Google Gemini 2.0 Flash**: Multimodal AI with vision OCR
-- **mcp-server-fetch**: MCP server for HTTP requests
+- **mcp-agent**: Agent framework for autonomous tool orchestration
+- **Google Gemini 2.0 Flash**: Multimodal AI for vision OCR
+- **httpx**: Async HTTP client for API calls
 - **Pydantic**: Data validation and structured outputs
 - **Python 3.11**: Runtime environment
 
-### Two-Step Workflow
+### Autonomous Agent Architecture
 
-**Step 1: Vision OCR (Photo Extraction)**
-- Gemini vision extracts visible metadata from image:
-  - ISBN number
-  - Title
-  - Author
-  - Publisher
-  - Publication year
-- **Critical**: NO description from photo (requirement)
+**4 Specialized Tools:**
 
-**Step 2: Web Enrichment (Agent-Driven)**
-- Agent connects to fetch MCP server
-- Calls Google Books API with ISBN
-- Parses JSON response for complete book data:
-  - Description (from web only!)
-  - Language
-  - Categories
-  - Page count
-- Falls back to Open Library if Google Books fails
-- Merges photo + web data with source attribution
+1. **extract_from_photo(image_path)**
+   - Uses Gemini vision to extract ISBN, title, author, publisher, year
+   - Returns ONLY visible metadata (NO description)
+   - Enforces that description must come from web
 
-### Fallback Strategy
-1. **Primary**: Google Books API (`https://www.googleapis.com/books/v1/volumes`)
-2. **Fallback 1**: Open Library by ISBN (`https://openlibrary.org/api/books`)
-3. **Fallback 2**: Open Library search by title+author
+2. **search_google_books(isbn)**
+   - PRIMARY web data source
+   - Calls `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}`
+   - Returns: description, language, categories, page_count, publisher, year
+   - Best quality descriptions
 
-All fallbacks use the existing fetch MCP tool (no additional dependencies or API keys).
+3. **search_open_library(isbn)**
+   - FALLBACK web data source
+   - Calls `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details`
+   - Returns: description, subjects, page_count, publisher, year
+   - No API key required
+
+4. **search_brave(query)**
+   - LAST RESORT web search
+   - Calls Brave Search API: `https://api.search.brave.com/res/v1/web/search`
+   - Only used if both book APIs fail to provide description
+   - Requires BRAVE_API_KEY environment variable
+
+**Waterfall Logic:**
+
+```
+Agent receives photo data → checks Book state
+  ↓
+Calls search_google_books(isbn)
+  ↓
+If description or other fields missing:
+  → Calls search_open_library(isbn)
+  ↓
+If description STILL missing and BRAVE_API_KEY available:
+  → Calls search_brave("{title} {author} book")
+  ↓
+Merges all data → converts types → returns complete Book
+```
+
+**State Tracking:**
+- Agent knows which Book fields are filled vs null
+- Agent instructions show current state for each field
+- Agent stops calling tools once all required fields populated
+- Agent prefers photo data for: isbn, title, author (most reliable)
+- Agent prefers web data for: description, language, categories, page_count
+
+**Type Safety:**
+- Agent converts integer year → string year
+- Agent joins array categories → comma-separated string
+- Agent keeps page_count as integer
+- All conversions documented in agent instructions
 
 ## Key Design Decisions
 
-### Why Agent-Based Architecture?
-- **Autonomous tool use**: Agent decides when/how to call fetch tool
-- **Flexible fallbacks**: Instructions guide agent to try multiple APIs
-- **Scalable**: Easy to add more data sources without code changes
+### Why Specialized Tools Instead of Generic Fetch?
+- **Clarity**: Agent sees explicit tool names (search_google_books vs fetch)
+- **Purpose**: Each tool has specific scope and return structure
+- **Instructions**: Easier to write waterfall logic with named tools
+- **Debugging**: Logs show which tool was called and why
+
+### Why No MCP Servers?
+- **Simplicity**: Custom @app.tool() functions are easier to debug
+- **Flexibility**: Can add custom error handling and retry logic
+- **Dependencies**: No need for Node.js/npm (Brave MCP server requires npx)
+- **Control**: Full control over API calls and response parsing
 
 ### Why Separate Photo and Web Models?
-- **BookPhotoExtraction**: Only visible metadata (no description field)
-- **Book**: Complete data with description from web
-- **Prevents**: Description from accidentally coming from photo
+- **BookPhotoExtraction**: Only visible metadata (enforces no description)
+- **Book**: Complete data including description from web
+- **Validation**: Pydantic ensures description can't come from photo
+- **Type Safety**: Separate models prevent accidental data mixing
 
-### Why fetch MCP Server?
-- **Universal HTTP client**: Can call any REST API
-- **No authentication burden**: Works with public APIs (Google Books, Open Library)
-- **MCP pattern compliance**: Clean separation of concerns
+## Testing Results
+
+**Test Book:** ISBN 978-80-275-1365-9 (Bílá Voda by Kateřina Tučková)
+
+**Photo Extraction:**
+- ✅ ISBN: 978-80-275-1365-9
+- ✅ Title: (extracted but not shown in final output - used web title)
+- ✅ Author: Kateřina Tučková
+- ✅ Publisher: (not visible on cover)
+- ✅ Year: (not visible on cover)
+
+**Agent Autonomous Actions:**
+- ✅ Called search_google_books("978-80-275-1365-9")
+- ✅ Retrieved Czech description
+- ✅ Retrieved language: cs
+- ✅ Retrieved categories: Fiction
+- ✅ Retrieved page_count: 640
+- ✅ Retrieved publisher: Host
+- ✅ Retrieved year: 2022
+- ✅ Converted year from integer to string
+- ✅ Converted categories from array to string
+
+**Final Output:**
+```
+Title: Bílá Voda
+Author: Kateřina Tučková
+ISBN: 978-80-275-1365-9
+Publisher: Host
+Year: 2022
+Language: cs
+Categories: Fiction
+Pages: 640
+Description: Román o osudech tří žen, řeholnic, jejichž životy se protnuly v internačním klášteře v Bílé Vodě...
+Source: photo+web ✓
+```
+
+## API Keys Required
+
+1. **GEMINI_API_KEY** (required)
+   - Get from: https://aistudio.google.com/app/apikey
+   - Used for: Gemini vision OCR
+
+2. **BRAVE_API_KEY** (optional)
+   - Get from: https://brave.com/search/api/
+   - Used for: Last-resort web search fallback
+   - If not provided: Agent skips search_brave tool
+
+## Next Steps (Optional Enhancements)
+
+1. **Testing**: Add automated tests with mocked API responses
+2. **Logging**: Add detailed tool invocation logs for debugging
+3. **Batch Processing**: Support multiple book images at once
+4. **Image Upload**: Web interface for uploading book covers
+5. **Export**: Save results to CSV or JSON file
+6. **Caching**: Cache API responses to reduce calls
 
 ## User Preferences
 None documented yet.
 
-## Next Steps (Optional Enhancements)
-- Add image upload support for user-provided covers
-- Support batch processing for multiple books
-- Add more fallback sources (Amazon, GoodReads)
-- Export results to CSV/JSON formats
-- Add caching to reduce API calls
-
 ## Notes
 - Description field MUST NEVER come from photo extraction (enforced by model design)
-- Agent uses detailed instructions to parse Google Books JSON structure
-- Markdown code fences in agent responses are stripped during JSON parsing
-- Source tracking helps verify data provenance (photo vs web vs both)
+- Agent autonomously decides which tools to call based on Book state
+- Waterfall strategy ensures complete data even if primary APIs fail
+- Type conversions prevent Pydantic validation errors
 - Workflow configured to run `python src/book_extractor.py` on start
+- No MCP servers currently configured (all tools are custom Python functions)

@@ -12,17 +12,26 @@ The book extractor uses an intelligent agent-based workflow:
 - **No description from photos** - only visible metadata
 
 ### 🌐 Step 2: Web Enrichment (Autonomous Agent)
-The agent autonomously collects missing data using a waterfall strategy:
-1. **Google Books API** - Primary source for description, language, categories
-2. **Open Library API** - Fallback if Google Books fails or has missing data
-3. **Brave Search** - Last resort (optional, requires free API key)
+The agent has 4 specialized tools and orchestrates them autonomously:
 
-The agent intelligently tracks which fields it has and only calls APIs when needed!
+**Tools Available:**
+1. `extract_from_photo` - Gemini vision extracts visible metadata (ISBN, title, author)
+2. `search_google_books` - PRIMARY: Calls Google Books API for complete data
+3. `search_open_library` - FALLBACK: Alternative book database
+4. `search_brave` - LAST RESORT: Web search if both APIs fail (optional)
+
+**Waterfall Logic:**
+- Agent tracks which Book fields are filled vs null
+- Calls Google Books first for description, language, categories
+- Falls back to Open Library if Google Books missing data
+- Uses Brave Search only if critical fields still missing
+- Stops when all required fields are populated
 
 ### 🎯 Key Features
-- **mcp-agent framework**: Autonomous agent with tool access
-- **Gemini vision**: Accurate ISBN and metadata extraction
-- **MCP fetch server**: HTTP requests to Google Books API
+- **Autonomous orchestration**: Agent decides which tools to call based on Book state
+- **Specific tools**: Each tool has clear purpose (not generic fetch)
+- **Smart fallbacks**: Waterfall strategy ensures complete data
+- **Type-safe**: Agent converts data to correct types (year as string, categories joined)
 - **Source tracking**: Shows "photo", "web", or "photo+web"
 - **Description guarantee**: Description ALWAYS from web, never from photo!
 
@@ -53,24 +62,28 @@ The agent intelligently tracks which fields it has and only calls APIs when need
 python src/book_extractor.py
 ```
 
-The agent will automatically:
-1. Extract ISBN and metadata from the image using Gemini vision
-2. Connect to the fetch MCP server
-3. Call Google Books API with the ISBN
-4. Retrieve complete book information (description, language, categories)
-5. Display merged results with source attribution
+The autonomous agent will:
+1. Use Gemini vision to extract ISBN, title, author from image
+2. Check which Book fields are missing
+3. Call `search_google_books(isbn)` for description, language, categories
+4. If any fields still missing, call `search_open_library(isbn)`
+5. If description still missing and Brave API available, call `search_brave(query)`
+6. Merge all data and display complete Book object
 
 **Example Output:**
 ```
 📚 Complete Book Information:
 ============================================================
+Title: Bílá Voda
 Author: Kateřina Tučková
 ISBN: 978-80-275-1365-9
 Publisher: Host
 Year: 2022
 Language: cs
-Description: [Full description from Google Books API...]
-Source: photo+web
+Categories: Fiction
+Pages: 640
+Description: Román o osudech tří žen, řeholnic, jejichž životy...
+Source: photo+web ✓
 ============================================================
 ```
 
@@ -79,14 +92,36 @@ Source: photo+web
 ```
 ├── src/
 │   ├── models.py           - Pydantic models (Book, BookPhotoExtraction)
-│   ├── book_extractor.py   - Main agent with vision + web enrichment
-│   ├── book_agent.py       - Legacy implementation (deprecated)
-│   └── web_enrichment.py   - Helper functions (deprecated)
+│   └── book_extractor.py   - Autonomous agent with 4 specialized tools
 ├── files/
 │   └── book.png            - Book cover image for extraction
-├── mcp_agent.config.yaml   - MCP server configuration
+├── mcp_agent.config.yaml   - Agent configuration
 └── README.md               - This file
 ```
+
+## How the Agent Works
+
+The agent is built with the mcp-agent framework and has access to 4 custom tools:
+
+```python
+@app.tool()
+async def extract_from_photo(image_path: str) -> dict:
+    """Gemini vision extracts ISBN, title, author, publisher, year"""
+
+@app.tool()
+async def search_google_books(isbn: str) -> dict:
+    """Calls Google Books API for description, language, categories"""
+
+@app.tool()
+async def search_open_library(isbn: str) -> dict:
+    """Calls Open Library API as fallback"""
+
+@app.tool()
+async def search_brave(query: str) -> dict:
+    """Web search as last resort (requires BRAVE_API_KEY)"""
+```
+
+The agent receives instructions with the waterfall strategy and autonomously decides which tools to call based on which Book fields are still missing.
 
 ## Technologies Used
 

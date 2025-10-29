@@ -122,3 +122,10 @@
 {"level":"INFO","timestamp":"2025-10-29T21:23:40.341494","namespace":"mcp_agent.book_extractor","message":"book_collector: Data collection complete"}
 {"level":"INFO","timestamp":"2025-10-29T21:23:40.355970","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
 {"level":"INFO","timestamp":"2025-10-29T21:23:40.364808","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:27:22.344175","namespace":"mcp_agent.core.context","message":"Configuring logger with level: info"}
+{"level":"INFO","timestamp":"2025-10-29T21:27:22.372706","namespace":"mcp_agent.book_extractor","message":"Loading subagents from configuration..."}
+{"level":"INFO","timestamp":"2025-10-29T21:27:22.372966","namespace":"mcp_agent.book_extractor","message":"MCPApp initialized","data":{"data":{"progress_action":"Running","target":"book_extractor","agent_name":"mcp_application_loop","session_id":"a6ca5c55-f034-4ffd-912c-7f1682e7b2aa"}}}
+{"level":"INFO","timestamp":"2025-10-29T21:27:29.215563","namespace":"mcp_agent.mcp.mcp_aggregator.book_collector","message":"Last aggregator closing, shutting down all persistent connections..."}
+{"level":"INFO","timestamp":"2025-10-29T21:27:26.028985","namespace":"mcp_agent.book_extractor","message":"book_collector: Agent initialized with all tools"}
+{"level":"INFO","timestamp":"2025-10-29T21:27:29.202040","namespace":"mcp_agent.book_extractor","message":"book_collector: Data collection complete"}
+{"level":"INFO","timestamp":"2025-10-29T21:27:29.222031","namespace":"mcp_agent.mcp.mcp_connection_manager","message":"Disconnecting all persistent server connections..."}
