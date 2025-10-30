@@ -296,7 +296,7 @@ async def collect_book_data(image_path: str) -> Book:
             name="book_collector",
             instruction=f"""You are an autonomous book data collector. Your goal is to build a COMPLETE Book object by collecting data from multiple sources.
 
-PHOTO DATA (already extracted):
+PHOTO DATA:
 {json.dumps(photo_data, indent=2)}
 
 YOUR TOOLS:
