@@ -101,6 +101,7 @@ async def search_google_books(isbn: str) -> dict:
     """
     Search Google Books API for complete book information using ISBN.
     Returns description, language, categories, page_count, and other metadata.
+    Note: Agent should translate description/categories to German for non-German books.
     
     Args:
         isbn: The ISBN number to search for
@@ -148,6 +149,7 @@ async def search_brave(query: str) -> dict:
     """
     Search the web using Brave Search API for book information.
     Used as last resort when Google Books and Open Library don't have complete data.
+    Note: Agent should translate descriptions to German for non-German books.
     
     Args:
         query: Search query (e.g., "book title author")
@@ -196,6 +198,7 @@ async def search_open_library(isbn: str) -> dict:
     """
     Search Open Library API for book information using ISBN.
     Used as fallback when Google Books doesn't have complete data.
+    Note: Agent should translate description/subjects to German for non-German books.
     
     Args:
         isbn: The ISBN number to search for
@@ -248,13 +251,13 @@ async def search_open_library(isbn: str) -> dict:
 
 async def collect_book_data(image_path: str) -> Book:
     """
-    Autonomous agent that collects complete book information.
+    Fully autonomous agent that collects complete book information.
     
-    The agent:
-    1. Extracts visible data from photo
+    The agent autonomously:
+    1. Calls extract_from_photo to get visible metadata
     2. Calls search_google_books for web enrichment
     3. Falls back to search_open_library if needed
-    4. Falls back to Brave Search MCP if available and needed
+    4. Falls back to search_brave if available and needed
     5. Merges all data and returns complete Book object
     
     Args:
@@ -266,119 +269,123 @@ async def collect_book_data(image_path: str) -> Book:
     async with app.run() as agent_app:
         logger = agent_app.logger
         
-        print(f"🤖 Starting autonomous book data collection...")
+        print(f"🤖 Starting fully autonomous book data collection...")
         print(f"📖 Image: {image_path}\n")
-        
-        # Step 1: Extract photo data
-        print(f"📸 Step 1: Extracting visible metadata from image...")
-        photo_data = await extract_from_photo(image_path)
-        
-        print(f"   ✓ Photo extraction complete")
-        if photo_data.get("isbn"):
-            print(f"   ✓ Found ISBN: {photo_data['isbn']}")
-        if photo_data.get("title"):
-            print(f"   ✓ Found Title: {photo_data['title']}")
-        if photo_data.get("author"):
-            print(f"   ✓ Found Author: {photo_data['author']}")
         
         # Check if Brave Search is available
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
         brave_status = "✓ Brave Search available" if has_brave else "○ Brave Search not configured (optional)"
-        print(f"\n🔧 Available tools:")
+        print(f"🔧 Available tools:")
+        print(f"   ✓ Gemini Vision (extract_from_photo)")
         print(f"   ✓ Google Books API")
         print(f"   ✓ Open Library API")
-        print(f"   {brave_status}")
+        print(f"   {brave_status}\n")
         
-        print(f"\n🌐 Step 2: Enriching with web data using autonomous agent...")
+        print(f"🌐 Launching autonomous agent to orchestrate all tools...")
         
-        # Create autonomous agent with all custom tools (no MCP servers needed)
+        # Create fully autonomous agent that calls ALL tools
         book_agent = Agent(
             name="book_collector",
-            instruction=f"""You are an autonomous book data collector. Your goal is to build a COMPLETE Book object by collecting data from multiple sources.
+            instruction=f"""You are a fully autonomous book data collector. Your goal is to build a COMPLETE Book object by orchestrating ALL available tools.
 
-PHOTO DATA:
-{json.dumps(photo_data, indent=2)}
+IMAGE PATH: {image_path}
 
-YOUR TOOLS:
-1. search_google_books(isbn) - PRIMARY source, best for description/metadata
-2. search_open_library(isbn) - FALLBACK source if Google Books missing data
-3. search_brave(query) - LAST RESORT if both APIs fail (only if BRAVE_API_KEY available)
+YOUR AVAILABLE TOOLS:
+1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
+2. search_google_books(isbn) - PRIMARY web source for description/metadata
+3. search_open_library(isbn) - FALLBACK web source
+4. search_brave(query) - LAST RESORT web search (only if BRAVE_API_KEY available)
 
-REQUIRED BOOK FIELDS (your goal is to fill ALL of these):
-- isbn: {photo_data.get('isbn', 'MISSING')}
-- title: {photo_data.get('title', 'MISSING')}  
-- author: {photo_data.get('author', 'MISSING')}
-- publisher: {photo_data.get('publisher') or 'MISSING - get from web'}
-- year: {photo_data.get('year') or 'MISSING - get from web'}
-- description: MISSING - MUST get from web, NEVER from photo!
-- language: MISSING - get from web
-- categories: MISSING - get from web  
-- page_count: MISSING - get from web
+REQUIRED BOOK FIELDS (fill ALL):
+- isbn: ISBN-10 or ISBN-13 (STRING)
+- title: Original title (for German books keep German, for foreign books keep original language title) (STRING)
+- authors: Author name(s) (STRING)
+- publisher: Publisher name (STRING)
+- published_year: Publication year (STRING, not integer!)
+- location: City/location of publication (STRING)
+- description: Book description IN GERMAN regardless of book language (STRING, MUST be from web, NEVER from photo!)
+- topic: Book topics/categories IN GERMAN (STRING)
+- genre: Book genre IN GERMAN (STRING)
+- page_count: Number of pages (STRING, not integer!)
+- language: Language code (e.g., "de", "en", "cs") (STRING)
+- source: "photo", "web", or "photo+web" (STRING)
 
-WATERFALL STRATEGY:
+AUTONOMOUS WORKFLOW:
 
-STEP 1: Call search_google_books('{photo_data.get('isbn', '')}')
-- Parse the response
-- Fill in: description, language, categories, page_count
-- Also use: publisher, year if missing from photo
+STEP 1: Extract from photo
+- Call: extract_from_photo("{image_path}")
+- Get: isbn, title, author, publisher, year (if visible on cover)
 
-STEP 2: Check what's still MISSING
-- If description is null → call search_open_library('{photo_data.get('isbn', '')}')
-- If other fields null → call search_open_library for those too
+STEP 2: Enrich with Google Books
+- Call: search_google_books(isbn_from_step1)
+- Get: description (translate to German!), language, categories (translate to German!), page_count, publisher, published_date
+- IMPORTANT: If book is not German, you MUST translate description and categories to German
 
-STEP 3: If STILL missing critical data (especially description)
-- Only if Brave Search is available (check if search_brave tool works)
-- Call: search_brave("{photo_data.get('title', '')} {photo_data.get('author', '')} book")
-- Extract description or other missing info from search results
+STEP 3: Fill gaps with Open Library (if needed)
+- If critical fields still missing, call: search_open_library(isbn)
+- Fill any remaining gaps
+- IMPORTANT: Translate description/subjects to German if needed
+
+STEP 4: Last resort - Brave Search (if needed and available)
+- If description still missing, call: search_brave("title author book")
+- Extract missing info from search results
+- IMPORTANT: Translate to German if needed
+
+LANGUAGE REQUIREMENTS (CRITICAL):
+- For GERMAN books (language: "de"): Keep title in German, description in German, topics in German
+- For FOREIGN books (language: anything else): Keep ORIGINAL title, but translate description/topics/genre to GERMAN
+- Example: English book "The Great Gatsby" → title: "The Great Gatsby", description: "Roman über..." (in German)
+- Example: Czech book "Bílá Voda" → title: "Bílá Voda", description: "..." (in German if available, or translate)
 
 DATA MERGING RULES:
-1. Keep photo data for: isbn, title, author (these are most reliable from image)
-2. Prefer Google Books for: description, language, categories, page_count
-3. Use Open Library to fill gaps
-4. Prefer web sources over photo for: publisher, year (more accurate)
-5. Source field:
+1. Prefer photo data for: isbn, title (original title), authors
+2. Prefer web data for: publisher, published_year, location, description, topic, genre, page_count, language
+3. Source attribution:
    - "photo" if only photo data
-   - "web" if only web data
+   - "web" if only web data  
    - "photo+web" if merged (most common)
 
-OUTPUT: Return JSON with ALL fields filled with CORRECT TYPES:
+TYPE CONVERSION RULES (CRITICAL):
+- published_year: Convert integer 2023 → string "2023"
+- page_count: Convert integer 300 → string "300"
+- topic: Join array ["Fiction", "Mystery"] → string "Fiction, Mystery" (in German!)
+- genre: Derive from categories/topics (in German)
+
+OUTPUT: Return JSON with ALL fields:
 {{
-  "isbn": "978-..." (STRING),
-  "title": "Book Title" (STRING),
-  "author": "Author Name" (STRING),
-  "publisher": "Publisher" (STRING),
-  "year": "2023" (STRING not integer - must convert!),
-  "description": "Complete description from web API" (STRING, NEVER from photo),
-  "language": "en" (STRING),
-  "categories": "Fiction, Mystery" (STRING - join array with commas!),
-  "page_count": 300 (INTEGER),
-  "source": "photo+web" (STRING)
+  "isbn": "978-...",
+  "title": "Original Title",
+  "authors": "Author Name",
+  "publisher": "Publisher",
+  "published_year": "2023",
+  "location": "City",
+  "description": "Beschreibung auf Deutsch...",
+  "topic": "Fiktion, Mysterium",
+  "genre": "Roman",
+  "page_count": "300",
+  "language": "en",
+  "source": "photo+web"
 }}
 
-CRITICAL TYPE CONVERSIONS:
-- year: Convert integer 2023 to string "2023"
-- categories: Join array ["Fiction", "Mystery"] into string "Fiction, Mystery"
-- page_count: Keep as integer (not string)
+If a field is unavailable after all attempts, use null.
 
-If a field is truly unavailable after trying all sources, use null (not "Not available").
-
-START NOW: Call search_google_books first, then continue as needed.""",
+START NOW: Call extract_from_photo first, then proceed with web enrichment.""",
         )
         
         async with book_agent:
-            logger.info("book_collector: Agent initialized with all tools")
+            logger.info("book_collector: Fully autonomous agent initialized")
             
             # Attach LLM to agent
             llm = await book_agent.attach_llm(
                 lambda agent: GoogleAugmentedLLM(model="gemini-2.0-flash-exp", agent=agent)
             )
             
-            # Let agent autonomously collect and merge data
+            # Let agent autonomously orchestrate ALL tools
             response_text = await llm.generate_str(
-                message="Collect complete book data following the waterfall strategy. Return only the final merged JSON."
+                message="Collect complete book data by calling all necessary tools. Start with extract_from_photo, then enrich with web sources. Return only the final merged JSON with all fields."
             )
             
-            logger.info("book_collector: Data collection complete")
+            logger.info("book_collector: Autonomous collection complete")
             
             # Parse response
             response_text = response_text.strip()
@@ -396,23 +403,27 @@ START NOW: Call search_google_books first, then continue as needed.""",
                 book_data = json.loads(response_text)
                 book = Book(**book_data)
                 
-                print(f"\n✅ Collection complete!")
+                print(f"\n✅ Autonomous collection complete!")
                 print(f"\n📚 Complete Book Information:")
                 print("=" * 60)
                 if book.title:
                     print(f"Title: {book.title}")
-                if book.author:
-                    print(f"Author: {book.author}")
+                if book.authors:
+                    print(f"Authors: {book.authors}")
                 if book.isbn:
                     print(f"ISBN: {book.isbn}")
                 if book.publisher:
                     print(f"Publisher: {book.publisher}")
-                if book.year:
-                    print(f"Year: {book.year}")
+                if book.published_year:
+                    print(f"Year: {book.published_year}")
+                if book.location:
+                    print(f"Location: {book.location}")
                 if book.language:
                     print(f"Language: {book.language}")
-                if book.categories:
-                    print(f"Categories: {book.categories}")
+                if book.topic:
+                    print(f"Topic: {book.topic}")
+                if book.genre:
+                    print(f"Genre: {book.genre}")
                 if book.page_count:
                     print(f"Pages: {book.page_count}")
                 if book.description:
@@ -426,19 +437,20 @@ START NOW: Call search_google_books first, then continue as needed.""",
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse agent response: {e}")
                 logger.error(f"Response was: {response_text}")
-                # Return book with just photo data
+                # Return minimal book object
                 return Book(
-                    isbn=photo_data.get("isbn"),
-                    title=photo_data.get("title"),
-                    author=photo_data.get("author"),
-                    publisher=photo_data.get("publisher"),
-                    year=photo_data.get("year"),
-                    city=None,
+                    isbn=None,
+                    title=None,
+                    authors=None,
+                    publisher=None,
+                    published_year=None,
+                    location=None,
                     description=None,
-                    categories=None,
+                    topic=None,
+                    genre=None,
                     page_count=None,
                     language=None,
-                    source="photo"
+                    source="error"
                 )
 
 
