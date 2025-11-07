@@ -22,7 +22,28 @@ Demonstrate advanced agent capabilities:
 - Error handling for missing API keys and failed requests
 - Source attribution (photo/web/photo+web)
 
-## Recent Changes (October 30, 2025)
+## Recent Changes
+
+### Latest: Removed Redundant Custom Tools (November 7, 2025)
+
+**Code Cleanup:**
+- **Deleted** custom `search_brave()` function from `src/book_extractor.py`
+- **Deleted** custom `search_open_library()` function from `src/book_extractor.py`
+- **Reason**: MCP servers already provide these capabilities via Model Context Protocol
+- **Result**: Cleaner codebase with only 2 custom tools (extract_from_photo, search_google_books)
+
+**MCP Integration:**
+- Agent now uses MCP Open Library server for book metadata fallback
+- Agent now uses MCP Brave Search server for web search last resort
+- MCP servers configured in `mcp_agent.config.yaml`
+- No code changes needed - agent automatically discovers MCP tools
+
+**Documentation Updates:**
+- Updated README.md to reflect MCP usage
+- Updated replit.md to document removal of redundant tools
+- Agent instructions updated to reference MCP tools instead of custom implementations
+
+## Previous Changes (October 30, 2025)
 
 ### Latest: Fully Autonomous Agent + German Language Support (October 30, 2025)
 
@@ -117,10 +138,10 @@ Demonstrate advanced agent capabilities:
 ```
 ├── src/
 │   ├── models.py           - Pydantic models (Book, BookPhotoExtraction)
-│   └── book_extractor.py   - Autonomous agent with 4 specialized tools
+│   └── book_extractor.py   - Autonomous agent with 2 custom tools
 ├── files/
 │   └── book.png            - Book cover image for testing
-├── mcp_agent.config.yaml   - Agent configuration (Brave & Open Library MCP servers)
+├── mcp_agent.config.yaml   - MCP server configuration (Brave & Open Library)
 ├── README.md               - User documentation
 └── replit.md               - This file (project memory)
 ```
@@ -134,28 +155,28 @@ Demonstrate advanced agent capabilities:
 
 ### Autonomous Agent Architecture
 
-**4 Specialized Tools:**
+**2 Custom Tools + 2 MCP Servers:**
 
-1. **extract_from_photo(image_path)**
+1. **extract_from_photo(image_path)** - Custom Tool
    - Uses Gemini vision to extract ISBN, title, author, publisher, year
    - Returns ONLY visible metadata (NO description)
    - Enforces that description must come from web
 
-2. **search_google_books(isbn)**
+2. **search_google_books(isbn)** - Custom Tool
    - PRIMARY web data source
    - Calls `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}`
    - Returns: description, language, categories, page_count, publisher, year
    - Best quality descriptions
 
-3. **search_open_library(isbn)**
-   - FALLBACK web data source
-   - Calls `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details`
+3. **MCP Open Library Server** - @modelcontextprotocol/mcp-open-library
+   - FALLBACK web data source (via Model Context Protocol)
+   - Provides book metadata tools from Open Library API
    - Returns: description, subjects, page_count, publisher, year
    - No API key required
 
-4. **search_brave(query)**
-   - LAST RESORT web search
-   - Calls Brave Search API: `https://api.search.brave.com/res/v1/web/search`
+4. **MCP Brave Search Server** - @modelcontextprotocol/server-brave-search
+   - LAST RESORT web search (via Model Context Protocol)
+   - Provides web search tools from Brave Search API
    - Only used if both book APIs fail to provide description
    - Requires BRAVE_API_KEY environment variable
 
@@ -164,13 +185,13 @@ Demonstrate advanced agent capabilities:
 ```
 Agent receives photo data → checks Book state
   ↓
-Calls search_google_books(isbn)
+Calls search_google_books(isbn) [Custom Tool]
   ↓
 If description or other fields missing:
-  → Calls search_open_library(isbn)
+  → Uses MCP Open Library tools [MCP Server]
   ↓
 If description STILL missing and BRAVE_API_KEY available:
-  → Calls search_brave("{title} {author} book")
+  → Uses MCP Brave Search tools [MCP Server]
   ↓
 Merges all data → converts types → returns complete Book
 ```
@@ -196,13 +217,14 @@ Merges all data → converts types → returns complete Book
 - **Instructions**: Easier to write waterfall logic with named tools
 - **Debugging**: Logs show which tool was called and why
 
-### MCP Servers Now Available
-- **Updated**: Now using MCP servers alongside custom tools
-- **Brave Search MCP**: Web search via Model Context Protocol
-- **Open Library MCP**: Book metadata via Model Context Protocol
+### MCP Servers Fully Integrated (November 7, 2025)
+- **Removed**: Custom `search_brave()` and `search_open_library()` tools deleted
+- **Now Using**: MCP servers for Brave Search and Open Library exclusively
+- **Brave Search MCP**: Web search via `@modelcontextprotocol/server-brave-search`
+- **Open Library MCP**: Book metadata via `mcp-open-library`
 - **Node.js installed**: Required for npx to run MCP servers
 - **Environment fix**: XDG_CONFIG_HOME and HOME variables set for npx
-- **Hybrid approach**: Custom tools + MCP servers for maximum flexibility
+- **Cleaner architecture**: Only custom tools that don't have MCP equivalents (extract_from_photo, search_google_books)
 
 ### Why Separate Photo and Web Models?
 - **BookPhotoExtraction**: Only visible metadata (enforces no description)

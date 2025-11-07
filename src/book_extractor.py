@@ -144,109 +144,6 @@ async def search_google_books(isbn: str) -> dict:
             return {"error": f"Google Books API error: {str(e)}"}
 
 
-@app.tool()
-async def search_brave(query: str) -> dict:
-    """
-    Search the web using Brave Search API for book information.
-    Used as last resort when Google Books and Open Library don't have complete data.
-    Note: Agent should translate descriptions to German for non-German books.
-    
-    Args:
-        query: Search query (e.g., "book title author")
-    
-    Returns:
-        Dictionary with search results
-    """
-    api_key = os.environ.get("BRAVE_API_KEY")
-    if not api_key:
-        return {"error": "BRAVE_API_KEY not set"}
-    
-    url = "https://api.search.brave.com/res/v1/web/search"
-    headers = {
-        "X-Subscription-Token": api_key,
-        "Accept": "application/json"
-    }
-    params = {"q": query, "count": 5}
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, params=params, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Extract relevant snippets from search results
-            results = []
-            for result in data.get("web", {}).get("results", [])[:3]:
-                results.append({
-                    "title": result.get("title"),
-                    "description": result.get("description"),
-                    "url": result.get("url")
-                })
-            
-            return {
-                "query": query,
-                "results": results,
-                "source": "brave_search"
-            }
-            
-        except Exception as e:
-            return {"error": f"Brave Search API error: {str(e)}"}
-
-
-@app.tool()
-async def search_open_library(isbn: str) -> dict:
-    """
-    Search Open Library API for book information using ISBN.
-    Used as fallback when Google Books doesn't have complete data.
-    Note: Agent should translate description/subjects to German for non-German books.
-    
-    Args:
-        isbn: The ISBN number to search for
-    
-    Returns:
-        Dictionary with book data from Open Library, or empty dict if not found
-    """
-    if not isbn:
-        return {"error": "No ISBN provided"}
-    
-    url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details"
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-            
-            key = f"ISBN:{isbn}"
-            if key not in data:
-                return {"error": "No results found in Open Library"}
-            
-            details = data[key].get("details", {})
-            
-            # Extract and structure the data
-            description = details.get("description")
-            if isinstance(description, dict):
-                description = description.get("value")
-            
-            authors = details.get("authors", [])
-            author_names = [a.get("name") for a in authors if isinstance(a, dict)]
-            
-            result = {
-                "title": details.get("title"),
-                "authors": author_names,
-                "publisher": details.get("publishers", [None])[0] if details.get("publishers") else None,
-                "published_date": details.get("publish_date"),
-                "description": description,
-                "language": None,  # Open Library doesn't always have language
-                "categories": details.get("subjects", []),
-                "page_count": details.get("number_of_pages"),
-                "source": "open_library"
-            }
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Open Library API error: {str(e)}"}
 
 
 async def collect_book_data(image_path: str) -> Book:
@@ -293,8 +190,8 @@ IMAGE PATH: {image_path}
 YOUR AVAILABLE TOOLS:
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
 2. search_google_books(isbn) - PRIMARY web source for description/metadata
-3. search_open_library(isbn) - FALLBACK web source
-4. search_brave(query) - LAST RESORT web search (only if BRAVE_API_KEY available)
+3. MCP Open Library tools - FALLBACK web source (via Model Context Protocol)
+4. MCP Brave Search tools - LAST RESORT web search (via Model Context Protocol)
 
 REQUIRED BOOK FIELDS (fill ALL):
 - isbn: ISBN-10 or ISBN-13 (STRING)
@@ -322,12 +219,12 @@ STEP 2: Enrich with Google Books
 - IMPORTANT: If book is not German, you MUST translate description and categories to German
 
 STEP 3: Fill gaps with Open Library (if needed)
-- If critical fields still missing, call: search_open_library(isbn)
+- If critical fields still missing, use MCP Open Library tools (available via Model Context Protocol)
 - Fill any remaining gaps
 - IMPORTANT: Translate description/subjects to German if needed
 
 STEP 4: Last resort - Brave Search (if needed and available)
-- If description still missing, call: search_brave("title author book")
+- If description still missing, use MCP Brave Search tools (available via Model Context Protocol)
 - Extract missing info from search results
 - IMPORTANT: Translate to German if needed
 
