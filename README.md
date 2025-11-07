@@ -13,13 +13,13 @@ The agent autonomously executes the complete workflow without manual steps:
 **Tools Available:**
 1. `extract_from_photo` - Gemini vision extracts visible metadata (ISBN, title, authors, publisher, year)
 2. `search_google_books` - PRIMARY: Calls Google Books API for complete data
-3. MCP Open Library - FALLBACK: Alternative book database (via Model Context Protocol)
-4. MCP Brave Search - LAST RESORT: Web search if both APIs fail (via Model Context Protocol)
+3. `search_open_library` - FALLBACK: Calls Open Library API directly (no MCP server available)
+4. MCP Brave Search - LAST RESORT: Web search via Model Context Protocol (requires valid API key)
 
 **Autonomous Execution:**
 1. Agent calls `extract_from_photo` to get ISBN and visible metadata
 2. Agent calls `search_google_books` for description, topics, genre, language
-3. If fields missing, agent uses MCP Open Library tools as fallback
+3. If fields missing, agent calls `search_open_library` as fallback
 4. If description still missing, agent uses MCP Brave Search tools (if API key available)
 5. Agent merges all data, converts types, and returns complete Book object
 
@@ -81,7 +81,7 @@ python src/book_extractor.py
 The autonomous agent will:
 1. Call `extract_from_photo` to get ISBN, title, authors from image
 2. Call `search_google_books(isbn)` for description, language, topics
-3. If any fields still missing, use MCP Open Library tools as fallback
+3. If any fields still missing, call `search_open_library(isbn)` as fallback
 4. If description still missing and Brave API available, use MCP Brave Search tools
 5. Translate description/topics/genre to German if book is not German
 6. Merge all data and display complete Book object
@@ -119,7 +119,7 @@ Source: photo+web ✓
 
 ## How the Agent Works
 
-The agent is built with the mcp-agent framework and has access to 2 custom tools plus MCP servers:
+The agent is built with the mcp-agent framework and has access to 3 custom tools plus 1 MCP server:
 
 **Custom Tools:**
 ```python
@@ -130,16 +130,20 @@ async def extract_from_photo(image_path: str) -> dict:
 @app.tool()
 async def search_google_books(isbn: str) -> dict:
     """Calls Google Books API for description, language, topics, genre"""
+
+@app.tool()
+async def search_open_library(isbn: str) -> dict:
+    """Calls Open Library API as fallback (no MCP server available)"""
 ```
 
 **MCP Servers (via Model Context Protocol):**
-- `brave-search` - Web search tools from @modelcontextprotocol/server-brave-search
-- `open-library` - Book metadata tools from mcp-open-library
+- `brave-search` - Web search tools from @modelcontextprotocol/server-brave-search (requires valid API key)
 
 The agent receives comprehensive instructions and autonomously:
 - Calls `extract_from_photo` as first step to get the image path
 - Orchestrates the waterfall strategy based on which Book fields are missing
-- Uses MCP servers for Open Library and Brave Search instead of custom implementations
+- Uses custom tools for APIs without MCP servers (Google Books, Open Library)
+- Uses MCP Brave Search server when available for last-resort web search
 - Translates descriptions/topics to German for non-German books
 - Merges data from all sources with proper type conversions
 
