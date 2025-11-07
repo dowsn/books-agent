@@ -12,7 +12,6 @@ mcp:
         - "-y"
         - "@modelcontextprotocol/server-brave-search"
       env:
-        BRAVE_API_KEY: ${BRAVE_API_KEY}
         XDG_CONFIG_HOME: /tmp/.config
         HOME: /tmp
 

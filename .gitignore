@@ -38,6 +38,9 @@ env/
 .env
 .env.local
 
+# MCP Agent secrets
+mcp_agent.secrets.yaml
+
 # Test files
 test_book_cover.jpg
 attached_assets/
