@@ -53,21 +53,25 @@ The agent autonomously executes the complete workflow without manual steps:
 
 ## Setup
 
-1. Dependencies are already installed in this Replit project:
+1. **Install Dependencies** (already installed in this Replit project):
    - mcp-agent[google] - Agent framework with Gemini support
    - mcp-server-fetch - MCP server for HTTP requests
    - google-genai - Gemini API client
 
-2. Add your Gemini API key to Replit Secrets:
-   - Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-   - Add it as `GEMINI_API_KEY` in Replit Secrets
+2. **Configure MCP Agent**:
+   ```bash
+   # Copy example files if not already present
+   cp mcp_agent.config.yaml.example mcp_agent.config.yaml
+   cp mcp_agent.secrets.yaml.example mcp_agent.secrets.yaml
+   ```
 
-3. (Optional) Add Brave Search for last-resort fallback:
-   - Get a free API key from [Brave Search API](https://brave.com/search/api/)
-   - Add it as `BRAVE_API_KEY` in Replit Secrets
-   - The agent will automatically use it if Google Books and Open Library fail
+3. **Add API Keys** to `mcp_agent.secrets.yaml`:
+   - **Required**: Get Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+   - **Optional**: Get Brave Search API key from [Brave Search API](https://brave.com/search/api/)
 
-4. Configuration file `mcp_agent.config.yaml` is already set up
+4. **Install Open Library MCP Server** (already done):
+   - Located in `mcps/open-library/`
+   - No API key required (uses public Open Library API)
 
 ## Usage
 
@@ -81,7 +85,7 @@ python src/book_extractor.py
 The autonomous agent will:
 1. Call `extract_from_photo` to get ISBN, title, authors from image
 2. Call `search_google_books(isbn)` for description, language, topics
-3. If any fields still missing, call `search_open_library(isbn)` as fallback
+3. If any fields still missing, use Open Library MCP tools as fallback
 4. If description still missing and Brave API available, use MCP Brave Search tools
 5. Translate description/topics/genre to German if book is not German
 6. Merge all data and display complete Book object
