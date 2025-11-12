@@ -144,60 +144,6 @@ async def search_google_books(isbn: str) -> dict:
             return {"error": f"Google Books API error: {str(e)}"}
 
 
-@app.tool()
-async def search_open_library(isbn: str) -> dict:
-    """
-    Search Open Library API for book information using ISBN.
-    Used as fallback when Google Books doesn't have complete data.
-    Note: No MCP server available for Open Library, so using direct API call.
-    Note: Agent should translate description/subjects to German for non-German books.
-    
-    Args:
-        isbn: The ISBN number to search for
-    
-    Returns:
-        Dictionary with book data from Open Library, or empty dict if not found
-    """
-    if not isbn:
-        return {"error": "No ISBN provided"}
-    
-    url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details"
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-            
-            key = f"ISBN:{isbn}"
-            if key not in data:
-                return {"error": "No results found in Open Library"}
-            
-            details = data[key].get("details", {})
-            
-            # Extract and structure the data
-            description = details.get("description")
-            if isinstance(description, dict):
-                description = description.get("value")
-            
-            authors = details.get("authors", [])
-            author_names = [a.get("name") for a in authors if isinstance(a, dict)]
-            
-            result = {
-                "title": details.get("title"),
-                "authors": author_names,
-                "publisher": details.get("publishers", [None])[0] if details.get("publishers") else None,
-                "published_date": details.get("publish_date"),
-                "description": description,
-                "language": None,  # Open Library doesn't always have language
-                "categories": details.get("subjects", []),
-                "page_count": details.get("number_of_pages"),
-            }
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Open Library API error: {str(e)}"}
 
 
 
@@ -208,8 +154,8 @@ async def collect_book_data(image_path: str) -> Book:
     The agent autonomously:
     1. Calls extract_from_photo to get visible metadata
     2. Calls search_google_books for web enrichment
-    3. Falls back to search_open_library if needed
-    4. Falls back to search_brave if available and needed
+    3. Falls back to Open Library MCP tools if needed
+    4. Falls back to Brave Search MCP tools if available and needed
     5. Merges all data and returns complete Book object
     
     Args:
@@ -230,7 +176,7 @@ async def collect_book_data(image_path: str) -> Book:
         print(f"🔧 Available tools:")
         print(f"   ✓ Gemini Vision (extract_from_photo)")
         print(f"   ✓ Google Books API")
-        print(f"   ✓ Open Library API")
+        print(f"   ✓ Open Library MCP Server")
         print(f"   {brave_status}\n")
         
         print(f"🌐 Launching autonomous agent to orchestrate all tools...")
@@ -245,7 +191,9 @@ IMAGE PATH: {image_path}
 YOUR AVAILABLE TOOLS:
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
 2. search_google_books(isbn) - PRIMARY web source for description/metadata
-3. search_open_library(isbn) - FALLBACK web source for book metadata
+3. Open Library MCP tools - FALLBACK web source (via Model Context Protocol):
+   - get_book_by_id(idType="isbn", idValue=isbn) - Get book info by ISBN
+   - Use this if Google Books doesn't have complete data
 4. MCP Brave Search tools - LAST RESORT web search (via Model Context Protocol, if API key available)
 
 REQUIRED BOOK FIELDS (fill ALL):
@@ -273,9 +221,9 @@ STEP 2: Enrich with Google Books
 - Get: description (translate to German!), language, categories (translate to German!), page_count, publisher, published_date
 - IMPORTANT: If book is not German, you MUST translate description and categories to German
 
-STEP 3: Fill gaps with Open Library (if needed)
-- If critical fields still missing, call: search_open_library(isbn)
-- Fill any remaining gaps
+STEP 3: Fill gaps with Open Library MCP (if needed)
+- If critical fields still missing, use Open Library MCP tool: get_book_by_id(idType="isbn", idValue=isbn)
+- Fill any remaining gaps from the response
 - IMPORTANT: Translate description/subjects to German if needed
 
 STEP 4: Last resort - Brave Search (if needed and available)
