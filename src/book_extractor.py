@@ -192,7 +192,6 @@ async def search_open_library(isbn: str) -> dict:
                 "language": None,  # Open Library doesn't always have language
                 "categories": details.get("subjects", []),
                 "page_count": details.get("number_of_pages"),
-                "source": "open_library"
             }
             
             return result
