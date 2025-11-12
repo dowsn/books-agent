@@ -17,7 +17,7 @@ mcp:
     open-library:
       command: node
       args:
-        - "/tmp/mcp-open-library/build/index.js"
+        - "mcps/open-library/build/index.js"
       env:
         XDG_CONFIG_HOME: /tmp/.config
         HOME: /tmp
