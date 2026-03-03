@@ -307,66 +307,65 @@ async def search_open_library(isbn: str) -> dict:
 async def search_kvk(isbn: str) -> dict:
     """
     Attempt to scrape KVK (Karlsruher Virtueller Katalog) for book data using ISBN.
-    KVK aggregates many German library catalogs.
-    NOTE: KVK uses bot protection - this may return empty results if blocked.
+    KVK aggregates many German library catalogs (SWB, BVB, GBV, DDB, STABI_BERLIN, etc.).
+
+    Uses Chrome TLS fingerprinting + cookie bypass to get past bot protection.
+    NOTE: KVK renders its search results via JavaScript/CGI. This tool can bypass
+    the bot protection and load the page, but actual result data requires a live
+    browser to execute JavaScript. Returns an error if no data found so the agent
+    falls back to Brave Search.
 
     Args:
         isbn: The ISBN number to search for
 
     Returns:
-        Dictionary with scraped book data, or error if blocked
+        Dictionary with scraped book data, or error message
     """
     if not isbn:
         return {"error": "No ISBN provided"}
 
-    url = (
-        f"https://kvk.bibliothek.kit.edu/api/2.0/"
-        f"?SB={isbn}"
-        f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
-        f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
-        f"&digitalOnly=0&embedFulltitle=0"
-    )
+    try:
+        from curl_cffi.requests import AsyncSession
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
-        "Referer": "https://kvk.bibliothek.kit.edu/",
-    }
+        url = (
+            f"https://kvk.bibliothek.kit.edu/"
+            f"?SB={isbn}"
+            f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
+            f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
+            f"&digitalOnly=0&embedFulltitle=0"
+        )
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        try:
-            response = await client.get(url, headers=headers, timeout=15.0)
+        async with AsyncSession(impersonate="chrome120") as session:
+            session.cookies.set("fast_challenge", "1", domain="kvk.bibliothek.kit.edu")
 
-            if "fast_challenge" in response.text or len(response.text) < 500:
-                return {"error": "KVK blocked by bot protection - try Brave Search instead"}
+            response = await session.get(url, timeout=20)
+
+            if "fast_challenge" in response.text and len(response.text) < 500:
+                return {"error": "KVK bot protection could not be bypassed"}
 
             soup = BeautifulSoup(response.text, "lxml")
+            page_text = soup.get_text(separator="\n", strip=True)
 
-            results = []
-            for item in soup.select(".result, .record, tr[class*='result']"):
-                text = item.get_text(separator=" ", strip=True)
-                if isbn.replace("-", "") in text.replace("-", ""):
-                    results.append(text)
-
-            if not results:
-                all_text = soup.get_text(separator="\n", strip=True)
-                lines = [l.strip() for l in all_text.split("\n") if l.strip()]
+            isbn_clean = isbn.replace("-", "")
+            if isbn_clean in page_text.replace("-", ""):
+                lines = [l.strip() for l in page_text.split("\n") if l.strip()]
                 relevant = [l for l in lines if any(
-                    kw in l.lower() for kw in ["isbn", "titel", "autor", "verlag", "jahr"]
+                    kw in l.lower() for kw in ["isbn", "titel", "autor", "verlag", "jahr", "auflage"]
                 )]
                 if relevant:
                     return {"raw_data": "\n".join(relevant[:20]), "source": "kvk"}
-                return {"error": "No results found in KVK"}
 
-            return {"raw_data": "\n".join(results[:5]), "source": "kvk"}
+            return {
+                "error": (
+                    "KVK bot protection bypassed but results require JavaScript execution. "
+                    "No static data found. Use Brave Search as fallback."
+                )
+            }
 
-        except Exception as e:
-            return {"error": f"KVK scraping error: {str(e)}"}
+    except ImportError:
+        return {"error": "curl_cffi not installed - cannot bypass KVK bot protection"}
+    except Exception as e:
+        return {"error": f"KVK scraping error: {str(e)}"}
 
 
 async def collect_book_data(image_path: str) -> Book:
