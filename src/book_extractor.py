@@ -6,6 +6,9 @@ from pathlib import Path
 import httpx
 import xml.etree.ElementTree as ET
 
+from firecrawl import AsyncV1FirecrawlApp
+from firecrawl.v1.client import V1WaitAction, V1ClickAction, V1ScrapeAction
+
 from google import genai
 from google.genai import types
 from mcp_agent.app import MCPApp
@@ -339,6 +342,150 @@ async def search_open_library(isbn: str) -> dict:
             return {"error": f"Open Library API error: {str(e)}"}
 
 
+@app.tool()
+async def search_kvk(isbn: str) -> dict:
+    """
+    Search the Karlsruher Virtueller Katalog (KVK) for book information using ISBN.
+    KVK is a meta-catalog that queries many German-language library networks simultaneously
+    (SWB, BVB, HEBIS, KOBV, GBV, DNB, Stabi Berlin).
+    Uses Firecrawl browser automation to fill and submit the search form, then scrapes
+    the rendered results.
+
+    Best for: confirming holdings, finding edition/year variants, cross-library title data.
+
+    Args:
+        isbn: The ISBN number to search for
+
+    Returns:
+        Dictionary with merged book data from KVK results
+    """
+    if not isbn:
+        return {"error": "No ISBN provided"}
+
+    raw_key = os.environ.get("FIRECRAWL_API_KEY")
+    if not raw_key:
+        return {"error": "FIRECRAWL_API_KEY not set — cannot use KVK scraping"}
+    api_key = raw_key if raw_key.startswith("fc-") else f"fc-{raw_key}"
+
+    form_url = (
+        f"https://kvk.bibliothek.kit.edu/"
+        f"?SB={isbn}"
+        f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
+        f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
+        f"&digitalOnly=0"
+    )
+
+    try:
+        firecrawl = AsyncV1FirecrawlApp(api_key=api_key)
+        result = await firecrawl.scrape_url(
+            form_url,
+            formats=["markdown"],
+            actions=[
+                V1WaitAction(type="wait", milliseconds=5000),
+                V1ClickAction(type="click", selector="button#search-btn"),
+                V1WaitAction(type="wait", milliseconds=25000),
+                V1ScrapeAction(type="scrape"),
+            ],
+            timeout=90000,
+            proxy="stealth",
+            only_main_content=False,
+        )
+
+        markdown = result.markdown or ""
+        if not markdown:
+            return {"error": "KVK returned empty response"}
+
+        if "keine Kataloge ausgewählt" in markdown:
+            return {"error": "KVK form submission failed — no catalogs selected"}
+
+        title = None
+        subtitle = None
+        author = None
+        published_year = None
+
+        def find_link_open(text: str, end: int) -> int:
+            """Scan backwards from end, skipping \\[ and \\], to find the opening [."""
+            i = end - 1
+            while i >= 0:
+                if text[i] == "[":
+                    if i > 0 and text[i - 1] == "\\":
+                        i -= 2
+                        continue
+                    return i
+                i -= 1
+            return -1
+
+        # Anchor on the year+close-URL pattern that ends every book entry
+        for m in re.finditer(r"[–\-](\d{4})\]\(https?://", markdown):
+            year_val = m.group(1)
+            open_pos = find_link_open(markdown, m.start())
+            if open_pos < 0:
+                continue
+
+            entry_text = markdown[open_pos + 1 : m.start()].strip()
+
+            # Strip browser-hint noise
+            entry_text = re.sub(
+                r"Ihr Browser zeigt an.*?besucht haben\.", "", entry_text, flags=re.DOTALL
+            ).strip()
+
+            # Remove escaped markdown brackets e.g. \[Verfasser\]
+            entry_text = re.sub(r"\\\[.*?\\\]", "", entry_text).strip()
+
+            # Split on \\\n or bare \n to separate title-line from author-line
+            parts = re.split(r"\\\s*\n|\n", entry_text, maxsplit=1)
+            title_line = parts[0].strip() if parts else entry_text
+            author_line = parts[1].strip() if len(parts) > 1 else ""
+
+            # Parse title line: "TITLE : SUBTITLE / credits"
+            if not title:
+                title_parts = re.split(r"\s*:\s*", title_line, maxsplit=1)
+                raw_title = re.sub(r"\s*/.*", "", title_parts[0]).strip()
+                if raw_title:
+                    title = raw_title
+                if len(title_parts) > 1 and not subtitle:
+                    raw_sub = re.sub(r"\s*/.*", "", title_parts[1]).strip()
+                    if raw_sub:
+                        subtitle = raw_sub
+
+            # Parse author line: "Lastname, Firstname [Verfasser]" or "Lastname, Firstname"
+            if not author and author_line:
+                au_m = re.search(
+                    r"([\wäöüÄÖÜß][^\[,\n]{1,30},\s+[\wäöüÄÖÜß][^\[,\n]{1,20})",
+                    author_line,
+                )
+                if au_m:
+                    raw_au = au_m.group(1).strip().rstrip(",").strip()
+                    name_parts = raw_au.split(", ", 1)
+                    if len(name_parts) == 2:
+                        author = f"{name_parts[1].strip()} {name_parts[0].strip()}"
+                    else:
+                        author = raw_au
+
+            if not published_year:
+                published_year = year_val
+
+        total_hits_match = re.search(r"Treffer insgesamt:\s*(\d+)", markdown)
+        total_hits = int(total_hits_match.group(1)) if total_hits_match else 0
+
+        if not title and total_hits == 0:
+            return {"error": f"No KVK results found for ISBN {isbn}"}
+
+        data: dict = {"source": "kvk", "total_hits": total_hits}
+        if title:
+            data["title"] = title
+        if subtitle:
+            data["subtitle"] = subtitle
+        if author:
+            data["author"] = author
+        if published_year:
+            data["published_year"] = published_year
+
+        return data
+
+    except Exception as e:
+        return {"error": f"KVK scraping error: {str(e)}"}
+
 
 async def collect_book_data(image_path: str) -> Book:
     """
@@ -347,9 +494,10 @@ async def collect_book_data(image_path: str) -> Book:
     The agent autonomously:
     1. Calls extract_from_photo to get visible metadata
     2. Calls search_dnb_sru as primary web source (title, subtitle, edition, series, description, and more)
-    3. Calls search_google_books for longer description and categories
-    4. Falls back to search_open_library if fields still missing
-    5. Falls back to Brave Search MCP as last resort
+    3. Calls search_kvk to cross-validate via KVK meta-catalog (8 German library networks)
+    4. Calls search_google_books for longer description and categories
+    5. Falls back to search_open_library if fields still missing
+    6. Falls back to Brave Search MCP as last resort
 
     Args:
         image_path: Path to book cover image
@@ -365,7 +513,7 @@ async def collect_book_data(image_path: str) -> Book:
 
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
         brave_status = "available" if has_brave else "not configured (optional)"
-        print(f"Tools: Gemini Vision | DNB SRU API | Google Books API | Open Library API | Brave Search ({brave_status})\n")
+        print(f"Tools: Gemini Vision | DNB SRU API | KVK (Firecrawl) | Google Books API | Open Library API | Brave Search ({brave_status})\n")
 
         book_agent = Agent(
             name="book_collector",
@@ -376,9 +524,10 @@ IMAGE PATH: {image_path}
 YOUR AVAILABLE TOOLS (use in this order):
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
 2. search_dnb_sru(isbn) - PRIMARY web source: DNB MARC21 XML API. Returns title, subtitle, author, publisher, location, year, edition, series, language, page_count, subjects, and description/notes
-3. search_google_books(isbn) - Best source for longer description and genre categories. No API key needed
-4. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
-5. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
+3. search_kvk(isbn) - KVK meta-catalog: queries 8 German library networks simultaneously. Cross-validates title, subtitle, author, year. Uses Firecrawl browser automation
+4. search_google_books(isbn) - Best source for longer description and genre categories. No API key needed
+5. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
+6. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
 
 REQUIRED BOOK FIELDS (fill ALL):
 - isbn: ISBN-10 or ISBN-13 (STRING)
@@ -405,16 +554,21 @@ STEP 2: DNB SRU lookup (PRIMARY)
 - Get: title, subtitle, author, publisher, location, published_year, edition, series, language, page_count, subjects, description
 - If description is returned and in German, use it directly
 
-STEP 3: Google Books (for longer description and genre)
+STEP 3: KVK meta-catalog (cross-validation)
+- Call: search_kvk(isbn)
+- Get: title, subtitle, author, published_year, total_hits
+- Use to fill gaps or confirm data from DNB; prefer DNB for publisher/location
+
+STEP 4: Google Books (for longer description and genre)
 - Call: search_google_books(isbn)
 - Get: description (TRANSLATE TO GERMAN!), categories (TRANSLATE TO GERMAN!), language
 - Prefer this description only if DNB returned none or a very short note
 
-STEP 4: Open Library (if fields still missing)
+STEP 5: Open Library (if fields still missing)
 - Call: search_open_library(isbn)
 - Fill any remaining gaps
 
-STEP 5: Brave Search (last resort)
+STEP 6: Brave Search (last resort)
 - Only if description is STILL missing and Brave is available
 - Use MCP Brave Search tools
 
@@ -474,7 +628,7 @@ START NOW: Call extract_from_photo first, then proceed with all web sources.""",
                     message=(
                         "Collect complete book data by calling all tools in order. "
                         "Start with extract_from_photo, then enrich with search_dnb_sru, "
-                        "search_google_books, search_open_library. "
+                        "search_kvk, search_google_books, search_open_library. "
                         "If any tool returns an error field, skip it and continue to the next. "
                         "Use Brave Search only if description is still missing after all tools. "
                         "Return only the final merged JSON."
