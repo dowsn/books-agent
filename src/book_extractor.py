@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 import httpx
 import xml.etree.ElementTree as ET
-from bs4 import BeautifulSoup
 
 from google import genai
 from google.genai import types
@@ -93,7 +92,7 @@ Return JSON with these exact fields (use null if not visible):
 
 
 @app.tool()
-async def search_dnb(isbn: str) -> dict:
+async def search_dnb_sru(isbn: str) -> dict:
     """
     Search Deutsche Nationalbibliothek (DNB) via SRU API using ISBN.
     PRIMARY web source - especially strong for German books.
@@ -304,126 +303,84 @@ async def search_open_library(isbn: str) -> dict:
 
 
 @app.tool()
-async def search_kvk(isbn: str) -> dict:
+async def search_dnb_portal(isbn: str) -> dict:
     """
-    Scrape KVK (Karlsruher Virtueller Katalog) for book data using ISBN.
-    KVK aggregates many German library catalogs (SWB, BVB, GBV, DDB, STABI_BERLIN, etc.).
+    Scrape the Deutsche Nationalbibliothek (DNB) web portal for enriched book metadata.
+    Complements search_dnb_sru by retrieving fields the XML API often omits:
+    subtitle, edition, series name, and human-readable description/annotation.
 
-    Uses Firecrawl (if FIRECRAWL_API_KEY set) for full JavaScript rendering,
-    otherwise falls back to Chrome TLS fingerprinting + cookie bypass.
+    Uses Firecrawl (FIRECRAWL_API_KEY required) for reliable structured extraction.
 
     Args:
-        isbn: The ISBN number to search for
+        isbn: The ISBN-10 or ISBN-13 to look up
 
     Returns:
-        Dictionary with scraped book data, or error message
+        Dictionary with: title, subtitle, author, publisher, publisher_location,
+        year, edition, isbn, pages, language, description, subjects, series
     """
     if not isbn:
         return {"error": "No ISBN provided"}
 
-    kvk_url = (
-        f"https://kvk.bibliothek.kit.edu/"
-        f"?SB={isbn}"
-        f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
-        f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
-        f"&digitalOnly=0&embedFulltitle=0"
-    )
+    raw_key = os.environ.get("FIRECRAWL_API_KEY", "")
+    if not raw_key:
+        return {"error": "FIRECRAWL_API_KEY not configured — cannot scrape DNB portal"}
 
-    firecrawl_key = os.environ.get("FIRECRAWL_API_KEY")
+    api_key = raw_key if raw_key.startswith("fc-") else f"fc-{raw_key}"
 
-    if firecrawl_key:
-        try:
-            result = await _kvk_via_firecrawl(isbn, kvk_url, firecrawl_key)
-            if "error" not in result:
-                return result
-        except Exception as e:
-            pass
+    try:
+        from firecrawl import AsyncV1FirecrawlApp
 
-    return await _kvk_via_cookie_bypass(isbn, kvk_url)
-
-
-async def _kvk_via_firecrawl(isbn: str, url: str, api_key: str) -> dict:
-    """Use Firecrawl to fully render KVK page including JavaScript results."""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.firecrawl.dev/v1/scrape",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "url": url,
-                "formats": ["markdown"],
-                "waitFor": 8000,
-                "timeout": 30000,
-                "headers": {
-                    "Cookie": "fast_challenge=1",
-                    "Accept-Language": "de-DE,de;q=0.9",
-                },
-            },
-            timeout=45.0,
+        isbn_clean = isbn.replace("-", "").replace(" ", "")
+        full_record_url = (
+            f"https://portal.dnb.de/opac/showFullRecord"
+            f'?currentResultId=%22{isbn_clean}%22%26any&currentPosition=0'
         )
 
-        if response.status_code != 200:
-            return {"error": f"Firecrawl API error: {response.status_code}"}
+        firecrawl_app = AsyncV1FirecrawlApp(api_key=api_key)
+        result = await firecrawl_app.scrape_url(
+            full_record_url,
+            formats=["extract"],
+            extract={
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "subtitle": {"type": "string"},
+                        "author": {"type": "string"},
+                        "publisher": {"type": "string"},
+                        "publisher_location": {"type": "string"},
+                        "year": {"type": "string"},
+                        "edition": {"type": "string"},
+                        "isbn": {"type": "string"},
+                        "pages": {"type": "string"},
+                        "language": {"type": "string"},
+                        "description": {"type": "string"},
+                        "subjects": {"type": "array", "items": {"type": "string"}},
+                        "series": {"type": "string"},
+                    },
+                },
+                "prompt": (
+                    "Extract all book catalog fields from this Deutsche Nationalbibliothek record: "
+                    "title, subtitle, author (Verfasser/Autor), publisher (Verlag), publisher location (Erscheinungsort), "
+                    "publication year (Erscheinungsjahr), edition (Auflage), ISBN, page count (Seitenzahl/Umfang), "
+                    "language (Sprache), description or annotation (Inhaltsangabe/Annotation), "
+                    "subject headings (Schlagwörter/DDC), and series (Reihe/Serie)."
+                ),
+            },
+            timeout=35000,
+        )
 
-        data = response.json()
-        if not data.get("success"):
-            return {"error": "Firecrawl returned no data"}
+        data = result.extract or {}
 
-        markdown = data.get("data", {}).get("markdown", "")
-        if not markdown or len(markdown) < 100:
-            return {"error": "Firecrawl returned empty content"}
+        if not data or not data.get("title"):
+            return {"error": f"DNB portal returned no structured data for ISBN {isbn}"}
 
-        isbn_clean = isbn.replace("-", "")
-        if isbn_clean not in markdown.replace("-", "") and isbn not in markdown:
-            lines = [l.strip() for l in markdown.split("\n") if l.strip()]
-            book_lines = [l for l in lines if any(
-                kw in l.lower() for kw in ["titel", "autor", "verlag", "isbn", "jahr", "auflage", "seiten"]
-            )]
-            if book_lines:
-                return {"raw_data": "\n".join(book_lines[:30]), "source": "kvk"}
-            return {"error": "KVK via Firecrawl: no book data found in rendered page"}
-
-        lines = [l.strip() for l in markdown.split("\n") if l.strip()]
-        return {"raw_data": "\n".join(lines[:40]), "source": "kvk_firecrawl"}
-
-
-async def _kvk_via_cookie_bypass(isbn: str, url: str) -> dict:
-    """Fallback: bypass KVK bot protection with curl_cffi cookie trick."""
-    try:
-        from curl_cffi.requests import AsyncSession
-
-        async with AsyncSession(impersonate="chrome120") as session:
-            session.cookies.set("fast_challenge", "1", domain="kvk.bibliothek.kit.edu")
-            response = await session.get(url, timeout=20)
-
-            if "fast_challenge" in response.text and len(response.text) < 500:
-                return {"error": "KVK bot protection could not be bypassed — set FIRECRAWL_API_KEY for JS rendering"}
-
-            soup = BeautifulSoup(response.text, "lxml")
-            page_text = soup.get_text(separator="\n", strip=True)
-
-            isbn_clean = isbn.replace("-", "")
-            if isbn_clean in page_text.replace("-", ""):
-                lines = [l.strip() for l in page_text.split("\n") if l.strip()]
-                relevant = [l for l in lines if any(
-                    kw in l.lower() for kw in ["isbn", "titel", "autor", "verlag", "jahr", "auflage"]
-                )]
-                if relevant:
-                    return {"raw_data": "\n".join(relevant[:20]), "source": "kvk"}
-
-            return {
-                "error": (
-                    "KVK page loaded but results require JavaScript. "
-                    "Set FIRECRAWL_API_KEY for full JS rendering."
-                )
-            }
+        return {"source": "dnb_portal", **data}
 
     except ImportError:
-        return {"error": "curl_cffi not installed"}
+        return {"error": "firecrawl-py not installed"}
     except Exception as e:
-        return {"error": f"KVK scraping error: {str(e)}"}
+        return {"error": f"DNB portal scraping error: {str(e)}"}
 
 
 async def collect_book_data(image_path: str) -> Book:
@@ -432,7 +389,7 @@ async def collect_book_data(image_path: str) -> Book:
 
     The agent autonomously:
     1. Calls extract_from_photo to get visible metadata
-    2. Calls search_dnb as primary web source (great for German books)
+    2. Calls search_dnb_sru as primary web source (great for German books)
     3. Calls search_google_books for description and categories
     4. Falls back to search_open_library if fields still missing
     5. Falls back to search_kvk (web scraping, may be blocked)
@@ -451,8 +408,10 @@ async def collect_book_data(image_path: str) -> Book:
         print(f"Image: {image_path}\n")
 
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
+        has_firecrawl = bool(os.environ.get("FIRECRAWL_API_KEY"))
         brave_status = "available" if has_brave else "not configured (optional)"
-        print(f"Tools: Gemini Vision | DNB API | Google Books API | Open Library API | KVK scraping | Brave Search ({brave_status})\n")
+        firecrawl_status = "available" if has_firecrawl else "not configured (optional)"
+        print(f"Tools: Gemini Vision | DNB SRU API | DNB Portal/Firecrawl ({firecrawl_status}) | Google Books API | Open Library API | Brave Search ({brave_status})\n")
 
         book_agent = Agent(
             name="book_collector",
@@ -462,10 +421,10 @@ IMAGE PATH: {image_path}
 
 YOUR AVAILABLE TOOLS (use in this order):
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
-2. search_dnb(isbn) - PRIMARY web source: Deutsche Nationalbibliothek. Best for German books. Returns title, author, publisher, location, year, language, page_count
-3. search_google_books(isbn) - Best source for description and categories. No API key needed
-4. search_open_library(isbn) - FALLBACK: Direct Open Library API. Use if DNB or Google Books missing data
-5. search_kvk(isbn) - FALLBACK: KVK catalog scraping (may be blocked by bot protection, try anyway)
+2. search_dnb_sru(isbn) - PRIMARY web source: DNB structured XML API. Returns title, author, publisher, location, year, language, page_count, subjects
+3. search_dnb_portal(isbn) - DNB web portal via Firecrawl: Returns subtitle, edition, series, description (complements search_dnb_sru)
+4. search_google_books(isbn) - Best source for description and categories. No API key needed
+5. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
 6. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
 
 REQUIRED BOOK FIELDS (fill ALL):
@@ -488,21 +447,23 @@ STEP 1: Extract from photo
 - Call: extract_from_photo("{image_path}")
 - Get: isbn, title, author, publisher, year
 
-STEP 2: DNB lookup (PRIMARY web source)
-- Call: search_dnb(isbn)
+STEP 2: DNB SRU lookup (PRIMARY — structured XML)
+- Call: search_dnb_sru(isbn)
 - Get: publisher, location, published_year, language, page_count, subjects
 
-STEP 3: Google Books (for description)
+STEP 3: DNB Portal lookup (ENRICHMENT — Firecrawl)
+- Call: search_dnb_portal(isbn)
+- Get: subtitle, edition, series, description (annotation in German!)
+- Use this description directly if it's in German
+
+STEP 4: Google Books (for description and genre)
 - Call: search_google_books(isbn)
 - Get: description (TRANSLATE TO GERMAN!), categories (TRANSLATE TO GERMAN!), language
+- Only use description if DNB portal had none
 
-STEP 4: Open Library (if fields still missing)
+STEP 5: Open Library (if fields still missing)
 - Call: search_open_library(isbn)
 - Fill any remaining gaps
-
-STEP 5: KVK scraping (if still missing)
-- Call: search_kvk(isbn)
-- May return "raw_data" string - extract what you can from it
 
 STEP 6: Brave Search (last resort)
 - Only if description is STILL missing and Brave is available
@@ -511,12 +472,14 @@ STEP 6: Brave Search (last resort)
 LANGUAGE REQUIREMENTS (CRITICAL):
 - For GERMAN books (language: "de"): Keep title in German, description in German
 - For FOREIGN books: Keep ORIGINAL title, but translate description/topics/genre to GERMAN
+- DNB portal description is usually already in German — prefer it over Google Books
 
 DATA MERGING RULES:
 1. Prefer photo data for: isbn, title, authors
-2. Prefer DNB data for: publisher, location, published_year, language, page_count
-3. Prefer Google Books for: description, categories/topic, genre
-4. Source: "photo+web" if merged, "photo" if only photo, "web" if only web
+2. Prefer DNB SRU data for: publisher, location, published_year, language, page_count
+3. Prefer DNB portal data for: subtitle, edition, series, description (if German)
+4. Prefer Google Books for: categories/topic, genre; description only if DNB had none
+5. Source: "photo+web" if merged, "photo" if only photo, "web" if only web
 
 TYPE CONVERSION (CRITICAL):
 - published_year: integer 2023 → string "2023"
