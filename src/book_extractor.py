@@ -100,14 +100,14 @@ async def search_dnb_sru(isbn: str) -> dict:
     """
     Search Deutsche Nationalbibliothek (DNB) via SRU API using ISBN.
     PRIMARY web source - especially strong for German books.
-    Returns title, author, publisher, location, year, language, page_count.
-    Note: DNB rarely includes descriptions - use search_google_books for that.
+    Parses MARC21 XML to extract: title, subtitle, author, publisher, location,
+    year, edition, series, language, page_count, subjects, and notes/description.
 
     Args:
         isbn: The ISBN number to search for
 
     Returns:
-        Dictionary with bibliographic data from DNB
+        Dictionary with full bibliographic data from DNB
     """
     if not isbn:
         return {"error": "No ISBN provided"}
@@ -152,13 +152,26 @@ async def search_dnb_sru(isbn: str) -> dict:
                         results.append(sf.text)
                 return results
 
+            def get_all_notes(tag):
+                parts = []
+                for field in record.findall(f".//marc:datafield[@tag='{tag}']", ns):
+                    for sf in field.findall("marc:subfield", ns):
+                        if sf.text:
+                            parts.append(sf.text.strip())
+                return ". ".join(parts) if parts else None
+
             title_a = get_subfield("245", "a") or ""
             title_b = get_subfield("245", "b") or ""
-            title = (title_a + " " + title_b).strip().rstrip("/: ").strip() or None
+            subtitle = title_b.strip().rstrip("/: ").strip() or None
+            title = title_a.strip().rstrip("/: ").strip() or None
+            if not title and subtitle:
+                title, subtitle = subtitle, None
 
             author = get_subfield("100", "a")
             if not author:
                 author = get_subfield("700", "a")
+            if author:
+                author = re.sub(r",?\s*\d{4}-\d{0,4}$", "", author).strip()
 
             publisher = get_subfield("264", "b") or get_subfield("260", "b")
             location = get_subfield("264", "a") or get_subfield("260", "a")
@@ -166,6 +179,14 @@ async def search_dnb_sru(isbn: str) -> dict:
             if year:
                 year_match = re.search(r"\d{4}", year)
                 year = year_match.group(0) if year_match else year
+
+            edition = get_subfield("250", "a")
+
+            series_name = get_subfield("490", "a")
+            series_vol = get_subfield("490", "v")
+            series = None
+            if series_name:
+                series = f"{series_name.rstrip(';, ')} {series_vol}".strip() if series_vol else series_name.strip()
 
             lang_field = record.find(".//marc:datafield[@tag='041']", ns)
             language = None
@@ -184,18 +205,30 @@ async def search_dnb_sru(isbn: str) -> dict:
                 page_count = page_match.group(1) if page_match else None
 
             subjects = get_all_subfields("650", "a") + get_all_subfields("689", "a")
+            ddc_codes = get_all_subfields("082", "a")
 
-            return {
+            description = get_all_notes("520") or get_all_notes("500")
+
+            result = {
                 "title": title,
+                "subtitle": subtitle,
                 "author": author,
                 "publisher": publisher,
                 "location": location,
                 "published_year": year,
+                "edition": edition,
+                "series": series,
                 "language": language,
                 "page_count": page_count,
                 "subjects": subjects,
                 "source": "dnb",
             }
+            if description:
+                result["description"] = description
+            if ddc_codes:
+                result["ddc"] = ddc_codes
+
+            return result
 
         except ET.ParseError as e:
             return {"error": f"DNB XML parse error: {str(e)}"}
@@ -306,86 +339,6 @@ async def search_open_library(isbn: str) -> dict:
             return {"error": f"Open Library API error: {str(e)}"}
 
 
-@app.tool()
-async def search_dnb_portal(isbn: str) -> dict:
-    """
-    Scrape the Deutsche Nationalbibliothek (DNB) web portal for enriched book metadata.
-    Complements search_dnb_sru by retrieving fields the XML API often omits:
-    subtitle, edition, series name, and human-readable description/annotation.
-
-    Uses Firecrawl (FIRECRAWL_API_KEY required) for reliable structured extraction.
-
-    Args:
-        isbn: The ISBN-10 or ISBN-13 to look up
-
-    Returns:
-        Dictionary with: title, subtitle, author, publisher, publisher_location,
-        year, edition, isbn, pages, language, description, subjects, series
-    """
-    if not isbn:
-        return {"error": "No ISBN provided"}
-
-    raw_key = os.environ.get("FIRECRAWL_API_KEY", "")
-    if not raw_key:
-        return {"error": "FIRECRAWL_API_KEY not configured — cannot scrape DNB portal"}
-
-    api_key = raw_key if raw_key.startswith("fc-") else f"fc-{raw_key}"
-
-    try:
-        from firecrawl import AsyncV1FirecrawlApp
-
-        isbn_clean = isbn.replace("-", "").replace(" ", "")
-        full_record_url = (
-            f"https://portal.dnb.de/opac/showFullRecord"
-            f'?currentResultId=%22{isbn_clean}%22%26any&currentPosition=0'
-        )
-
-        firecrawl_app = AsyncV1FirecrawlApp(api_key=api_key)
-        result = await firecrawl_app.scrape_url(
-            full_record_url,
-            formats=["extract"],
-            extract={
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "subtitle": {"type": "string"},
-                        "author": {"type": "string"},
-                        "publisher": {"type": "string"},
-                        "publisher_location": {"type": "string"},
-                        "year": {"type": "string"},
-                        "edition": {"type": "string"},
-                        "isbn": {"type": "string"},
-                        "pages": {"type": "string"},
-                        "language": {"type": "string"},
-                        "description": {"type": "string"},
-                        "subjects": {"type": "array", "items": {"type": "string"}},
-                        "series": {"type": "string"},
-                    },
-                },
-                "prompt": (
-                    "Extract all book catalog fields from this Deutsche Nationalbibliothek record: "
-                    "title, subtitle, author (Verfasser/Autor), publisher (Verlag), publisher location (Erscheinungsort), "
-                    "publication year (Erscheinungsjahr), edition (Auflage), ISBN, page count (Seitenzahl/Umfang), "
-                    "language (Sprache), description or annotation (Inhaltsangabe/Annotation), "
-                    "subject headings (Schlagwörter/DDC), and series (Reihe/Serie)."
-                ),
-            },
-            timeout=35000,
-        )
-
-        data = result.extract or {}
-
-        if not data or not data.get("title"):
-            return {"error": f"DNB portal returned no structured data for ISBN {isbn}"}
-
-        return {"source": "dnb_portal", **data}
-
-    except ImportError:
-        return {"error": "firecrawl-py not installed"}
-    except Exception as e:
-        return {"error": f"DNB portal scraping error: {str(e)}"}
-
 
 async def collect_book_data(image_path: str) -> Book:
     """
@@ -393,11 +346,10 @@ async def collect_book_data(image_path: str) -> Book:
 
     The agent autonomously:
     1. Calls extract_from_photo to get visible metadata
-    2. Calls search_dnb_sru as primary web source (great for German books)
-    3. Calls search_google_books for description and categories
+    2. Calls search_dnb_sru as primary web source (title, subtitle, edition, series, description, and more)
+    3. Calls search_google_books for longer description and categories
     4. Falls back to search_open_library if fields still missing
-    5. Falls back to search_kvk (web scraping, may be blocked)
-    6. Falls back to Brave Search MCP as last resort
+    5. Falls back to Brave Search MCP as last resort
 
     Args:
         image_path: Path to book cover image
@@ -412,10 +364,8 @@ async def collect_book_data(image_path: str) -> Book:
         print(f"Image: {image_path}\n")
 
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
-        has_firecrawl = bool(os.environ.get("FIRECRAWL_API_KEY"))
         brave_status = "available" if has_brave else "not configured (optional)"
-        firecrawl_status = "available" if has_firecrawl else "not configured (optional)"
-        print(f"Tools: Gemini Vision | DNB SRU API | DNB Portal/Firecrawl ({firecrawl_status}) | Google Books API | Open Library API | Brave Search ({brave_status})\n")
+        print(f"Tools: Gemini Vision | DNB SRU API | Google Books API | Open Library API | Brave Search ({brave_status})\n")
 
         book_agent = Agent(
             name="book_collector",
@@ -425,11 +375,10 @@ IMAGE PATH: {image_path}
 
 YOUR AVAILABLE TOOLS (use in this order):
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
-2. search_dnb_sru(isbn) - PRIMARY web source: DNB structured XML API. Returns title, author, publisher, location, year, language, page_count, subjects
-3. search_dnb_portal(isbn) - DNB web portal via Firecrawl: Returns subtitle, edition, series, description (complements search_dnb_sru)
-4. search_google_books(isbn) - Best source for description and categories. No API key needed
-5. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
-6. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
+2. search_dnb_sru(isbn) - PRIMARY web source: DNB MARC21 XML API. Returns title, subtitle, author, publisher, location, year, edition, series, language, page_count, subjects, and description/notes
+3. search_google_books(isbn) - Best source for longer description and genre categories. No API key needed
+4. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
+5. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
 
 REQUIRED BOOK FIELDS (fill ALL):
 - isbn: ISBN-10 or ISBN-13 (STRING)
@@ -451,25 +400,21 @@ STEP 1: Extract from photo
 - Call: extract_from_photo("{image_path}")
 - Get: isbn, title, author, publisher, year
 
-STEP 2: DNB SRU lookup (PRIMARY — structured XML)
+STEP 2: DNB SRU lookup (PRIMARY)
 - Call: search_dnb_sru(isbn)
-- Get: publisher, location, published_year, language, page_count, subjects
+- Get: title, subtitle, author, publisher, location, published_year, edition, series, language, page_count, subjects, description
+- If description is returned and in German, use it directly
 
-STEP 3: DNB Portal lookup (ENRICHMENT — Firecrawl)
-- Call: search_dnb_portal(isbn)
-- Get: subtitle, edition, series, description (annotation in German!)
-- Use this description directly if it's in German
-
-STEP 4: Google Books (for description and genre)
+STEP 3: Google Books (for longer description and genre)
 - Call: search_google_books(isbn)
 - Get: description (TRANSLATE TO GERMAN!), categories (TRANSLATE TO GERMAN!), language
-- Only use description if DNB portal had none
+- Prefer this description only if DNB returned none or a very short note
 
-STEP 5: Open Library (if fields still missing)
+STEP 4: Open Library (if fields still missing)
 - Call: search_open_library(isbn)
 - Fill any remaining gaps
 
-STEP 6: Brave Search (last resort)
+STEP 5: Brave Search (last resort)
 - Only if description is STILL missing and Brave is available
 - Use MCP Brave Search tools
 
@@ -484,14 +429,13 @@ ERROR RECOVERY (CRITICAL):
 LANGUAGE REQUIREMENTS (CRITICAL):
 - For GERMAN books (language: "de"): Keep title in German, description in German
 - For FOREIGN books: Keep ORIGINAL title, but translate description/topics/genre to GERMAN
-- DNB portal description is usually already in German — prefer it over Google Books
+- DNB description/notes are usually already in German — prefer them over Google Books
 
 DATA MERGING RULES:
 1. Prefer photo data for: isbn, title, authors
-2. Prefer DNB SRU data for: publisher, location, published_year, language, page_count
-3. Prefer DNB portal data for: subtitle, edition, series, description (if German)
-4. Prefer Google Books for: categories/topic, genre; description only if DNB had none
-5. Source: "photo+web" if merged, "photo" if only photo, "web" if only web
+2. Prefer DNB data for: publisher, location, published_year, language, page_count, edition, series, subtitle
+3. Prefer Google Books for: categories/topic, genre; longer description if DNB had none or only a short note
+4. Source: "photo+web" if merged, "photo" if only photo, "web" if only web
 
 TYPE CONVERSION (CRITICAL):
 - published_year: integer 2023 → string "2023"
@@ -530,7 +474,7 @@ START NOW: Call extract_from_photo first, then proceed with all web sources.""",
                     message=(
                         "Collect complete book data by calling all tools in order. "
                         "Start with extract_from_photo, then enrich with search_dnb_sru, "
-                        "search_dnb_portal, search_google_books, search_open_library. "
+                        "search_google_books, search_open_library. "
                         "If any tool returns an error field, skip it and continue to the next. "
                         "Use Brave Search only if description is still missing after all tools. "
                         "Return only the final merged JSON."

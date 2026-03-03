@@ -10,37 +10,33 @@ A production-ready autonomous AI agent using mcp-agent framework with Google Gem
 1. **`extract_from_photo(image_path)`** — Gemini Vision
    - Extracts ISBN, title, author, publisher, year from book cover image
    - Returns ONLY visible metadata; never returns description
+   - Full `try/except` — returns `{"error": ...}` on any failure
 
 2. **`search_dnb_sru(isbn)`** — Deutsche Nationalbibliothek SRU XML API
    - Primary structured metadata source; no API key required
-   - Returns: title, author, publisher, location, year, language, page_count, subjects
+   - Parses MARC21 XML fields: title (`245$a`), subtitle (`245$b`), author (`100$a`),
+     publisher (`264$b`), location (`264$a`), year (`264$c`), edition (`250$a`),
+     series (`490$a/$v`), language (`041$a`), pages (`300$a`), subjects (`650$a`, `689$a`),
+     description/notes (`520$a` or `500$a`), DDC codes (`082$a`)
    - Endpoint: `https://services.dnb.de/sru/dnb?...&recordSchema=MARC21-xml`
-   - Best source for German-language books
 
-3. **`search_dnb_portal(isbn)`** — DNB Web Portal via Firecrawl (NEW)
-   - Enriches DNB SRU data with fields the XML API omits
-   - Returns: subtitle, edition, series, description (annotation, usually already in German)
-   - Uses `AsyncV1FirecrawlApp` with structured JSON extraction (`extract` format)
-   - Requires `FIRECRAWL_API_KEY`; handles missing `fc-` prefix automatically
-   - Endpoint: `https://portal.dnb.de/opac/showFullRecord?currentResultId="{isbn}"%26any&currentPosition=0`
-
-4. **`search_google_books(isbn)`** — Google Books API
-   - Best for description (English) and categories; no API key needed
-   - Agent translates description and categories to German
+3. **`search_google_books(isbn)`** — Google Books API
+   - Best for longer descriptions (English, translated by agent to German) and genre categories
+   - No API key needed
    - Endpoint: `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}`
 
-5. **`search_open_library(isbn)`** — Open Library API
+4. **`search_open_library(isbn)`** — Open Library API
    - Fallback if above tools miss fields
    - Endpoint: `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details`
 
-6. **MCP Brave Search** — Last resort
+5. **MCP Brave Search** — Last resort
    - Only called if description still missing and `BRAVE_API_KEY` is set
    - Single MCP server configured in `mcp_agent.config.yaml`
 
 ### Data Merging Priority
 - **isbn, title, authors**: prefer photo data (most reliable OCR source)
-- **publisher, location, published_year, language, page_count**: prefer DNB SRU
-- **subtitle, edition, series, description**: prefer DNB portal (Firecrawl)
+- **publisher, location, published_year, language, page_count, edition, series, subtitle**: prefer DNB SRU
+- **description**: DNB SRU note/annotation if present (already German); otherwise Google Books translated
 - **topic, genre**: prefer Google Books (translated to German)
 - **source**: `"photo+web"` if merged, `"photo"` if only photo, `"web"` if only web
 
