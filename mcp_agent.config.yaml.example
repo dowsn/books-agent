@@ -9,21 +9,12 @@ logger:
 
 mcp:
   servers:
-    # Brave Search MCP Server (requires BRAVE_API_KEY in secrets)
+    # Brave Search MCP Server (requires BRAVE_API_KEY in secrets - used as last resort)
     brave-search:
       command: npx
       args:
         - "-y"
         - "@modelcontextprotocol/server-brave-search"
-      env:
-        XDG_CONFIG_HOME: /tmp/.config
-        HOME: /tmp
-    
-    # Open Library MCP Server (no API key required)
-    open-library:
-      command: node
-      args:
-        - "mcps/open-library/build/index.js"
       env:
         XDG_CONFIG_HOME: /tmp/.config
         HOME: /tmp

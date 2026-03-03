@@ -14,13 +14,6 @@ mcp:
       env:
         XDG_CONFIG_HOME: /tmp/.config
         HOME: /tmp
-    open-library:
-      command: node
-      args:
-        - "mcps/open-library/build/index.js"
-      env:
-        XDG_CONFIG_HOME: /tmp/.config
-        HOME: /tmp
 
 google:
   default_model: "gemini-2.0-flash-exp"
