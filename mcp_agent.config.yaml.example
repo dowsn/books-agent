@@ -21,4 +21,4 @@ mcp:
 
 google:
   # Default Gemini model for the agent
-  default_model: "gemini-2.0-flash-exp"
+  default_model: "gemini-2.0-flash"

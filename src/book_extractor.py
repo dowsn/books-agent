@@ -36,25 +36,26 @@ async def extract_from_photo(image_path: str) -> dict:
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY environment variable not set")
-
-    client = genai.Client(api_key=api_key)
+        return {"error": "GEMINI_API_KEY not set — cannot extract from photo"}
 
     image_file = Path(image_path)
     if not image_file.exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
+        return {"error": f"Image not found: {image_path}"}
 
-    with open(image_path, "rb") as f:
-        image_bytes = f.read()
+    try:
+        client = genai.Client(api_key=api_key)
 
-    if image_path.lower().endswith(".png"):
-        mime_type = "image/png"
-    elif image_path.lower().endswith(".webp"):
-        mime_type = "image/webp"
-    else:
-        mime_type = "image/jpeg"
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
 
-    prompt = """Extract ONLY visible information from this book cover:
+        if image_path.lower().endswith(".png"):
+            mime_type = "image/png"
+        elif image_path.lower().endswith(".webp"):
+            mime_type = "image/webp"
+        else:
+            mime_type = "image/jpeg"
+
+        prompt = """Extract ONLY visible information from this book cover:
 
 1. ISBN number (ISBN-10 or ISBN-13) - look on back cover or barcode area
 2. Book title - main title text
@@ -73,22 +74,25 @@ Return JSON with these exact fields (use null if not visible):
   "year": "string or null"
 }"""
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=BookPhotoExtraction,
-        ),
-    )
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                prompt,
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=BookPhotoExtraction,
+            ),
+        )
 
-    if response.text:
-        return json.loads(response.text)
-    else:
-        return {"isbn": None, "title": None, "author": None, "publisher": None, "year": None}
+        if response.text:
+            return json.loads(response.text)
+        else:
+            return {"error": "Gemini returned empty response for photo"}
+
+    except Exception as e:
+        return {"error": f"Photo extraction failed: {str(e)}"}
 
 
 @app.tool()
@@ -469,6 +473,14 @@ STEP 6: Brave Search (last resort)
 - Only if description is STILL missing and Brave is available
 - Use MCP Brave Search tools
 
+ERROR RECOVERY (CRITICAL):
+- If any tool returns a dict containing an "error" key, it has failed — DO NOT use its data
+- Simply skip the failed tool and continue immediately to the next tool in the list
+- NEVER stop the workflow because a tool failed — always try the remaining tools
+- If extract_from_photo fails: try search_dnb_sru with any visible ISBN from the image
+- If ALL tools except Brave have been tried and description is still null: use Brave Search
+- Only return null for a field if every tool failed to provide it
+
 LANGUAGE REQUIREMENTS (CRITICAL):
 - For GERMAN books (language: "de"): Keep title in German, description in German
 - For FOREIGN books: Keep ORIGINAL title, but translate description/topics/genre to GERMAN
@@ -510,12 +522,25 @@ START NOW: Call extract_from_photo first, then proceed with all web sources.""",
             logger.info("book_collector: Agent initialized")
 
             llm = await book_agent.attach_llm(
-                lambda agent: GoogleAugmentedLLM(model="gemini-2.0-flash-exp", agent=agent)
+                lambda agent: GoogleAugmentedLLM(model="gemini-2.0-flash", agent=agent)
             )
 
-            response_text = await llm.generate_str(
-                message="Collect complete book data by calling all necessary tools. Start with extract_from_photo, then enrich with DNB, Google Books, Open Library, and KVK. Return only the final merged JSON."
-            )
+            try:
+                response_text = await llm.generate_str(
+                    message=(
+                        "Collect complete book data by calling all tools in order. "
+                        "Start with extract_from_photo, then enrich with search_dnb_sru, "
+                        "search_dnb_portal, search_google_books, search_open_library. "
+                        "If any tool returns an error field, skip it and continue to the next. "
+                        "Use Brave Search only if description is still missing after all tools. "
+                        "Return only the final merged JSON."
+                    )
+                )
+            except Exception as e:
+                logger.error(f"book_collector: LLM call failed: {e}")
+                print(f"\n[ERROR] Agent failed: {e}")
+                print("Returning partial Book with error source.")
+                return Book(source="error")
 
             logger.info("book_collector: Collection complete")
 
@@ -565,6 +590,11 @@ START NOW: Call extract_from_photo first, then proceed with all web sources.""",
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse agent response: {e}")
                 logger.error(f"Response was: {response_text}")
+                print(f"\n[ERROR] Could not parse agent JSON output. Returning empty Book.")
+                return Book(source="error")
+            except Exception as e:
+                logger.error(f"Unexpected error building Book: {e}")
+                print(f"\n[ERROR] Unexpected error: {e}. Returning empty Book.")
                 return Book(source="error")
 
 
