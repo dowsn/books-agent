@@ -306,14 +306,11 @@ async def search_open_library(isbn: str) -> dict:
 @app.tool()
 async def search_kvk(isbn: str) -> dict:
     """
-    Attempt to scrape KVK (Karlsruher Virtueller Katalog) for book data using ISBN.
+    Scrape KVK (Karlsruher Virtueller Katalog) for book data using ISBN.
     KVK aggregates many German library catalogs (SWB, BVB, GBV, DDB, STABI_BERLIN, etc.).
 
-    Uses Chrome TLS fingerprinting + cookie bypass to get past bot protection.
-    NOTE: KVK renders its search results via JavaScript/CGI. This tool can bypass
-    the bot protection and load the page, but actual result data requires a live
-    browser to execute JavaScript. Returns an error if no data found so the agent
-    falls back to Brave Search.
+    Uses Firecrawl (if FIRECRAWL_API_KEY set) for full JavaScript rendering,
+    otherwise falls back to Chrome TLS fingerprinting + cookie bypass.
 
     Args:
         isbn: The ISBN number to search for
@@ -324,24 +321,85 @@ async def search_kvk(isbn: str) -> dict:
     if not isbn:
         return {"error": "No ISBN provided"}
 
+    kvk_url = (
+        f"https://kvk.bibliothek.kit.edu/"
+        f"?SB={isbn}"
+        f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
+        f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
+        f"&digitalOnly=0&embedFulltitle=0"
+    )
+
+    firecrawl_key = os.environ.get("FIRECRAWL_API_KEY")
+
+    if firecrawl_key:
+        try:
+            result = await _kvk_via_firecrawl(isbn, kvk_url, firecrawl_key)
+            if "error" not in result:
+                return result
+        except Exception as e:
+            pass
+
+    return await _kvk_via_cookie_bypass(isbn, kvk_url)
+
+
+async def _kvk_via_firecrawl(isbn: str, url: str, api_key: str) -> dict:
+    """Use Firecrawl to fully render KVK page including JavaScript results."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.firecrawl.dev/v1/scrape",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "url": url,
+                "formats": ["markdown"],
+                "waitFor": 8000,
+                "timeout": 30000,
+                "headers": {
+                    "Cookie": "fast_challenge=1",
+                    "Accept-Language": "de-DE,de;q=0.9",
+                },
+            },
+            timeout=45.0,
+        )
+
+        if response.status_code != 200:
+            return {"error": f"Firecrawl API error: {response.status_code}"}
+
+        data = response.json()
+        if not data.get("success"):
+            return {"error": "Firecrawl returned no data"}
+
+        markdown = data.get("data", {}).get("markdown", "")
+        if not markdown or len(markdown) < 100:
+            return {"error": "Firecrawl returned empty content"}
+
+        isbn_clean = isbn.replace("-", "")
+        if isbn_clean not in markdown.replace("-", "") and isbn not in markdown:
+            lines = [l.strip() for l in markdown.split("\n") if l.strip()]
+            book_lines = [l for l in lines if any(
+                kw in l.lower() for kw in ["titel", "autor", "verlag", "isbn", "jahr", "auflage", "seiten"]
+            )]
+            if book_lines:
+                return {"raw_data": "\n".join(book_lines[:30]), "source": "kvk"}
+            return {"error": "KVK via Firecrawl: no book data found in rendered page"}
+
+        lines = [l.strip() for l in markdown.split("\n") if l.strip()]
+        return {"raw_data": "\n".join(lines[:40]), "source": "kvk_firecrawl"}
+
+
+async def _kvk_via_cookie_bypass(isbn: str, url: str) -> dict:
+    """Fallback: bypass KVK bot protection with curl_cffi cookie trick."""
     try:
         from curl_cffi.requests import AsyncSession
 
-        url = (
-            f"https://kvk.bibliothek.kit.edu/"
-            f"?SB={isbn}"
-            f"&kataloge=SWB&kataloge=BVB&kataloge=NRW&kataloge=HEBIS"
-            f"&kataloge=KOBV_SOLR&kataloge=GBV&kataloge=DDB&kataloge=STABI_BERLIN"
-            f"&digitalOnly=0&embedFulltitle=0"
-        )
-
         async with AsyncSession(impersonate="chrome120") as session:
             session.cookies.set("fast_challenge", "1", domain="kvk.bibliothek.kit.edu")
-
             response = await session.get(url, timeout=20)
 
             if "fast_challenge" in response.text and len(response.text) < 500:
-                return {"error": "KVK bot protection could not be bypassed"}
+                return {"error": "KVK bot protection could not be bypassed — set FIRECRAWL_API_KEY for JS rendering"}
 
             soup = BeautifulSoup(response.text, "lxml")
             page_text = soup.get_text(separator="\n", strip=True)
@@ -357,13 +415,13 @@ async def search_kvk(isbn: str) -> dict:
 
             return {
                 "error": (
-                    "KVK bot protection bypassed but results require JavaScript execution. "
-                    "No static data found. Use Brave Search as fallback."
+                    "KVK page loaded but results require JavaScript. "
+                    "Set FIRECRAWL_API_KEY for full JS rendering."
                 )
             }
 
     except ImportError:
-        return {"error": "curl_cffi not installed - cannot bypass KVK bot protection"}
+        return {"error": "curl_cffi not installed"}
     except Exception as e:
         return {"error": f"KVK scraping error: {str(e)}"}
 
