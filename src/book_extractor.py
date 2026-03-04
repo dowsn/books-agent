@@ -494,10 +494,10 @@ async def collect_book_data(image_path: str) -> Book:
     The agent autonomously:
     1. Calls extract_from_photo to get visible metadata
     2. Calls search_dnb_sru as primary web source (title, subtitle, edition, series, description, and more)
-    3. Calls search_kvk to cross-validate via KVK meta-catalog (8 German library networks)
-    4. Calls search_google_books for longer description and categories
-    5. Falls back to search_open_library if fields still missing
-    6. Falls back to Brave Search MCP as last resort
+    3. Calls search_google_books for longer description and categories
+    4. Falls back to search_open_library if fields still missing
+    5. Falls back to Brave Search MCP if description still missing
+    6. Falls back to search_kvk as final resort (Firecrawl browser, slowest)
 
     Args:
         image_path: Path to book cover image
@@ -513,7 +513,7 @@ async def collect_book_data(image_path: str) -> Book:
 
         has_brave = bool(os.environ.get("BRAVE_API_KEY"))
         brave_status = "available" if has_brave else "not configured (optional)"
-        print(f"Tools: Gemini Vision | DNB SRU API | KVK (Firecrawl) | Google Books API | Open Library API | Brave Search ({brave_status})\n")
+        print(f"Tools: Gemini Vision | DNB SRU API | Google Books API | Open Library API | Brave Search ({brave_status}) | KVK (Firecrawl)\n")
 
         book_agent = Agent(
             name="book_collector",
@@ -524,10 +524,10 @@ IMAGE PATH: {image_path}
 YOUR AVAILABLE TOOLS (use in this order):
 1. extract_from_photo(image_path) - Extract ISBN, title, author, publisher, year from book cover image
 2. search_dnb_sru(isbn) - PRIMARY web source: DNB MARC21 XML API. Returns title, subtitle, author, publisher, location, year, edition, series, language, page_count, subjects, and description/notes
-3. search_kvk(isbn) - KVK meta-catalog: queries 8 German library networks simultaneously. Cross-validates title, subtitle, author, year. Uses Firecrawl browser automation
-4. search_google_books(isbn) - Best source for longer description and genre categories. No API key needed
-5. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
-6. MCP Brave Search tools - LAST RESORT only if description still missing and BRAVE_API_KEY available
+3. search_google_books(isbn) - Best source for longer description and genre categories. No API key needed
+4. search_open_library(isbn) - FALLBACK: Open Library API. Use if above tools missing data
+5. MCP Brave Search tools - Use if description still missing and BRAVE_API_KEY available
+6. search_kvk(isbn) - FINAL RESORT: KVK meta-catalog via Firecrawl browser automation (slowest, ~30s). Only call if critical fields like title or author are still missing
 
 REQUIRED BOOK FIELDS (fill ALL):
 - isbn: ISBN-10 or ISBN-13 (STRING)
@@ -554,23 +554,23 @@ STEP 2: DNB SRU lookup (PRIMARY)
 - Get: title, subtitle, author, publisher, location, published_year, edition, series, language, page_count, subjects, description
 - If description is returned and in German, use it directly
 
-STEP 3: KVK meta-catalog (cross-validation)
-- Call: search_kvk(isbn)
-- Get: title, subtitle, author, published_year, total_hits
-- Use to fill gaps or confirm data from DNB; prefer DNB for publisher/location
-
-STEP 4: Google Books (for longer description and genre)
+STEP 3: Google Books (for longer description and genre)
 - Call: search_google_books(isbn)
 - Get: description (TRANSLATE TO GERMAN!), categories (TRANSLATE TO GERMAN!), language
 - Prefer this description only if DNB returned none or a very short note
 
-STEP 5: Open Library (if fields still missing)
+STEP 4: Open Library (if fields still missing)
 - Call: search_open_library(isbn)
 - Fill any remaining gaps
 
-STEP 6: Brave Search (last resort)
+STEP 5: Brave Search (if description still missing)
 - Only if description is STILL missing and Brave is available
 - Use MCP Brave Search tools
+
+STEP 6: KVK meta-catalog (FINAL RESORT — only if title or author still missing)
+- Call: search_kvk(isbn)
+- This uses a real browser (Firecrawl) and takes ~30 seconds — only call it if earlier steps left critical fields empty
+- Get: title, subtitle, author, published_year, total_hits
 
 ERROR RECOVERY (CRITICAL):
 - If any tool returns a dict containing an "error" key, it has failed — DO NOT use its data
@@ -628,9 +628,10 @@ START NOW: Call extract_from_photo first, then proceed with all web sources.""",
                     message=(
                         "Collect complete book data by calling all tools in order. "
                         "Start with extract_from_photo, then enrich with search_dnb_sru, "
-                        "search_kvk, search_google_books, search_open_library. "
+                        "search_google_books, search_open_library. "
                         "If any tool returns an error field, skip it and continue to the next. "
-                        "Use Brave Search only if description is still missing after all tools. "
+                        "Use Brave Search if description is still missing. "
+                        "Only call search_kvk as a last resort if title or author are still missing after all other tools. "
                         "Return only the final merged JSON."
                     )
                 )

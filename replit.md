@@ -20,15 +20,7 @@ A production-ready autonomous AI agent using mcp-agent framework with Google Gem
      description/notes (`520$a` or `500$a`), DDC codes (`082$a`)
    - Endpoint: `https://services.dnb.de/sru/dnb?...&recordSchema=MARC21-xml`
 
-3. **`search_kvk(isbn)`** — Karlsruher Virtueller Katalog (KVK) via Firecrawl browser automation
-   - Queries 8 major German-language library networks simultaneously (SWB, BVB, NRW, HEBIS, KOBV, GBV, DNB, Stabi Berlin)
-   - Uses Firecrawl `actions` to load the pre-filled form URL, click submit, wait 25s for results, scrape rendered markdown
-   - Custom backward-scanning parser handles both entry formats: DNB (with `\[Verfasser\]`) and KOBV (plain dash)
-   - Returns: title, subtitle, author, published_year, total_hits
-   - Requires `FIRECRAWL_API_KEY`; handles missing `fc-` prefix automatically
-   - Best for: cross-library validation, confirming holdings across German library networks
-
-4. **`search_google_books(isbn)`** — Google Books API
+3. **`search_google_books(isbn)`** — Google Books API
    - Best for longer descriptions (English, translated by agent to German) and genre categories
    - No API key needed
    - Endpoint: `https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}`
@@ -37,14 +29,22 @@ A production-ready autonomous AI agent using mcp-agent framework with Google Gem
    - Fallback if above tools miss fields
    - Endpoint: `https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=details`
 
-5. **MCP Brave Search** — Last resort
-   - Only called if description still missing and `BRAVE_API_KEY` is set
+5. **MCP Brave Search** — Called if description still missing
+   - Only called if `BRAVE_API_KEY` is set
    - Single MCP server configured in `mcp_agent.config.yaml`
+
+6. **`search_kvk(isbn)`** — Karlsruher Virtueller Katalog (KVK) — FINAL RESORT
+   - Only called if critical fields (title or author) are still missing after all other tools
+   - Queries 8 major German-language library networks simultaneously (SWB, BVB, NRW, HEBIS, KOBV, GBV, DNB, Stabi Berlin)
+   - Uses Firecrawl `actions` to load pre-filled form URL, click submit, wait 25s for results, scrape rendered markdown
+   - Custom backward-scanning parser handles both entry formats: DNB (with `\[Verfasser\]`) and KOBV (plain dash)
+   - Returns: title, subtitle, author, published_year, total_hits
+   - Requires `FIRECRAWL_API_KEY`; handles missing `fc-` prefix automatically
+   - Slowest tool (~30s) due to real browser rendering
 
 ### Data Merging Priority
 - **isbn, title, authors**: prefer photo data (most reliable OCR source)
 - **publisher, location, published_year, language, page_count, edition, series, subtitle**: prefer DNB SRU
-- **title/subtitle cross-validation**: KVK confirms or fills gaps from DNB SRU
 - **description**: DNB SRU note/annotation if present (already German); otherwise Google Books translated
 - **topic, genre**: prefer Google Books (translated to German)
 - **source**: `"photo+web"` if merged, `"photo"` if only photo, `"web"` if only web
