@@ -29,3 +29,7 @@ args = "python src/book_extractor.py"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[ports]]
+localPort = 5904
+externalPort = 80
